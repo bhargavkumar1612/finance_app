@@ -9,7 +9,7 @@ __pycache__/
 env/
 venv/
 ENV/
-
+llms.json
 # Pytest
 .pytest_cache/
 
