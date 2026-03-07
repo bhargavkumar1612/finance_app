@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Finance Copilot</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; max-width: 900px; margin-inline: auto; background: #0f0f12; color: #e4e4e7; }
+    a { color: #7dd3fc; }
+    h1 { font-size: 1.5rem; margin-top: 0; }
+    h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; color: #a1a1aa; }
+    nav { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    nav button { padding: 0.5rem 0.75rem; border: 1px solid #3f3f46; background: #18181b; color: #e4e4e7; border-radius: 6px; cursor: pointer; }
+    nav button:hover { background: #27272a; }
+    nav button.active { background: #3b82f6; border-color: #3b82f6; }
+    section { display: none; padding: 0.5rem 0; }
+    section.visible { display: block; }
+    .card { background: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; }
+    .row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+    input[type="text"], input[type="file"] { padding: 0.5rem; border: 1px solid #3f3f46; background: #27272a; color: #e4e4e7; border-radius: 6px; min-width: 200px; }
+    button { padding: 0.5rem 1rem; border: 1px solid #3f3f46; background: #3b82f6; color: #fff; border-radius: 6px; cursor: pointer; }
+    button:hover { background: #2563eb; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #chatLog { max-height: 320px; overflow-y: auto; }
+    .msg { margin-bottom: 0.75rem; }
+    .msg.user { color: #a1a1aa; }
+    .msg.bot .content { background: #27272a; padding: 0.75rem; border-radius: 8px; }
+    .actions { margin-top: 0.5rem; font-size: 0.9rem; color: #a1a1aa; }
+    .actions span { display: inline-block; margin-right: 0.5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #27272a; }
+    th { color: #a1a1aa; }
+    .error { color: #f87171; }
+    .muted { color: #71717a; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>Finance Copilot</h1>
+  <p class="muted">Accounts, transactions, chat &amp; import. <a href="/docs" target="_blank">API docs</a></p>
+  <nav>
+    <button type="button" data-section="overview" class="active">Overview</button>
+    <button type="button" data-section="accounts">Accounts</button>
+    <button type="button" data-section="transactions">Transactions</button>
+    <button type="button" data-section="chat">Chat</button>
+    <button type="button" data-section="import">Import</button>
+  </nav>
+
+  <section id="overview" class="visible">
+    <h2>Overview</h2>
+    <div class="card">
+      <p>Use the tabs above to:</p>
+      <ul>
+        <li><strong>Accounts</strong> — List and create bank/cash accounts.</li>
+        <li><strong>Transactions</strong> — List recent transactions.</li>
+        <li><strong>Chat</strong> — Ask to add expenses, net worth, spending (e.g. &quot;add 500 for Swiggy&quot;, &quot;what is my net worth?&quot;).</li>
+        <li><strong>Import</strong> — Upload a CSV (e.g. HDFC), review rows, then confirm to add to ledger.</li>
+      </ul>
+      <p><a href="/docs" target="_blank">Open API docs (Swagger)</a> to call endpoints directly.</p>
+    </div>
+  </section>
+
+  <section id="accounts">
+    <h2>Accounts</h2>
+    <div class="card">
+      <button type="button" id="fetchAccounts">Refresh</button>
+    </div>
+    <div id="accountsList"></div>
+  </section>
+
+  <section id="transactions">
+    <h2>Transactions</h2>
+    <div class="card">
+      <button type="button" id="fetchTransactions">Refresh</button>
+    </div>
+    <div id="transactionsList"></div>
+  </section>
+
+  <section id="chat">
+    <h2>Chat</h2>
+    <div class="card">
+      <div class="row">
+        <input type="text" id="chatInput" placeholder="e.g. add 500 for Swiggy" />
+        <button type="button" id="chatSend">Send</button>
+      </div>
+    </div>
+    <div id="chatLog"></div>
+  </section>
+
+  <section id="import">
+    <h2>Import CSV or PDF</h2>
+    <div class="card">
+      <input type="file" id="importFile" accept=".csv,.txt,.pdf" />
+      <button type="button" id="importUpload">Upload &amp; parse</button>
+      <p class="muted" style="margin-top:0.5rem;">CSV: HDFC-style (Date, Narration, Withdrawal, Deposit). PDF: text-based statements (e.g. HDFC); scanned PDFs not supported yet.</p>
+    </div>
+    <div id="importResult"></div>
+  </section>
+
+  <script>
+    const API = '';
+    function showSection(id) {
+      document.querySelectorAll('section').forEach(s => s.classList.remove('visible'));
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      const s = document.getElementById(id);
+      if (s) s.classList.add('visible');
+      const btn = document.querySelector(`nav button[data-section="${id}"]`);
+      if (btn) btn.classList.add('active');
+    }
+    document.querySelectorAll('nav button[data-section]').forEach(btn => {
+      btn.addEventListener('click', () => showSection(btn.dataset.section));
+    });
+
+    async function api(path, opts = {}) {
+      const r = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json', ...opts.headers } });
+      if (!r.ok) throw new Error(await r.text());
+      const ct = r.headers.get('content-type');
+      if (ct && ct.includes('application/json')) return r.json();
+      return r.text();
+    }
+
+    document.getElementById('fetchAccounts').addEventListener('click', async () => {
+      const el = document.getElementById('accountsList');
+      el.innerHTML = 'Loading…';
+      try {
+        const list = await api('/v1/accounts');
+        el.innerHTML = list.length ? `
+          <table><thead><tr><th>Name</th><th>Type</th><th>ID</th></tr></thead><tbody>
+            ${list.map(a => `<tr><td>${a.name}</td><td>${a.account_type}</td><td class="muted">${a.id}</td></tr>`).join('')}
+          </tbody></table>` : '<p class="muted">No accounts. Create one via API docs or use Chat to add an expense (creates default account).</p>';
+      } catch (e) {
+        el.innerHTML = '<p class="error">' + e.message + '</p>';
+      }
+    });
+
+    document.getElementById('fetchTransactions').addEventListener('click', async () => {
+      const el = document.getElementById('transactionsList');
+      el.innerHTML = 'Loading…';
+      try {
+        const list = await api('/v1/transactions');
+        el.innerHTML = list.length ? `
+          <table><thead><tr><th>Date</th><th>Amount</th><th>Merchant</th><th>Category</th></tr></thead><tbody>
+            ${list.map(t => `<tr><td>${t.transaction_date}</td><td>${t.amount}</td><td>${t.merchant || '—'}</td><td>${t.category || '—'}</td></tr>`).join('')}
+          </tbody></table>` : '<p class="muted">No transactions yet.</p>';
+      } catch (e) {
+        el.innerHTML = '<p class="error">' + e.message + '</p>';
+      }
+    });
+
+    const chatLog = document.getElementById('chatLog');
+    const chatInput = document.getElementById('chatInput');
+    function addChat(msg, who) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + who;
+      div.innerHTML = who === 'user' ? '<span>' + escapeHtml(msg) + '</span>' : '<div class="content">' + escapeHtml(msg) + '</div>';
+      chatLog.appendChild(div);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+    document.getElementById('chatSend').addEventListener('click', async () => {
+      const text = chatInput.value.trim();
+      if (!text) return;
+      chatInput.value = '';
+      addChat(text, 'user');
+      const btn = document.getElementById('chatSend');
+      btn.disabled = true;
+      try {
+        const data = await api('/v1/chat', { method: 'POST', body: JSON.stringify({ message: text }) });
+        const r = data.response;
+        let msg = (r.data && r.data.message) || (r.data && r.data.summary) || JSON.stringify(r.data);
+        if (r.next_suggested_actions && r.next_suggested_actions.length)
+          msg += '<div class="actions">' + r.next_suggested_actions.map(a => '<span>' + escapeHtml(a) + '</span>').join('') + '</div>';
+        addChat(msg, 'bot');
+      } catch (e) {
+        addChat('Error: ' + e.message, 'bot');
+      }
+      btn.disabled = false;
+    });
+    chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('chatSend').click(); });
+
+    let lastImportData = null;
+    document.getElementById('importUpload').addEventListener('click', async () => {
+      const file = document.getElementById('importFile').files[0];
+      if (!file) { document.getElementById('importResult').innerHTML = '<p class="error">Choose a file.</p>'; return; }
+      const fd = new FormData();
+      fd.append('file', file);
+      document.getElementById('importResult').innerHTML = 'Uploading…';
+      try {
+        const r = await fetch(API + '/v1/import', { method: 'POST', body: fd });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+        lastImportData = data;
+        const rows = data.rows || [];
+        const aid = data.account_id;
+        document.getElementById('importResult').innerHTML = `
+          <p>Parsed <strong>${rows.length}</strong> rows. Account: <code>${aid}</code></p>
+          ${rows.length ? `
+            <table><thead><tr><th>Date</th><th>Amount</th><th>Merchant</th><th>Duplicate?</th></tr></thead><tbody>
+              ${rows.map((t, i) => `<tr><td>${t.date}</td><td>${t.amount}</td><td>${t.merchant || '—'}</td><td>${t.is_duplicate ? 'Yes' : 'No'}</td></tr>`).join('')}
+            </tbody></table>
+            <p><button type="button" id="importConfirm">Confirm &amp; add all to ledger</button></p>
+          ` : '<p class="muted">No rows to import.</p>'}
+        `;
+        document.getElementById('importConfirm')?.addEventListener('click', async () => {
+          if (!lastImportData || !lastImportData.rows.length) return;
+          const payload = {
+            account_id: lastImportData.account_id,
+            rows: lastImportData.rows.map(t => ({
+              amount: t.amount,
+              date: t.date,
+              merchant: t.merchant,
+              raw_description: t.raw_description,
+              fingerprint: t.fingerprint,
+            })),
+          };
+          try {
+            const res = await api('/v1/import/confirm', { method: 'POST', body: JSON.stringify(payload) });
+            document.getElementById('importResult').innerHTML += '<p class="muted">Inserted: ' + res.inserted + '. ' + (res.errors?.length ? 'Errors: ' + res.errors.join('; ') : '') + '</p>';
+          } catch (e) {
+            document.getElementById('importResult').innerHTML += '<p class="error">' + e.message + '</p>';
+          }
+        });
+      } catch (e) {
+        document.getElementById('importResult').innerHTML = '<p class="error">' + e.message + '</p>';
+      }
+    });
+  </script>
+</body>
+</html>

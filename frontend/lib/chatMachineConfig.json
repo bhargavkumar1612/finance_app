@@ -1,0 +1,79 @@
+{
+    "id": "chat",
+    "initial": "idle",
+    "states": {
+        "idle": {
+            "on": {
+                "SEND": {
+                    "target": "sending"
+                },
+                "LOAD_HISTORY": {
+                    "target": "result",
+                    "actions": "assignHistory"
+                }
+            }
+        },
+        "sending": {
+            "on": {
+                "RECEIVE": [
+                    {
+                        "guard": "isConfirmation",
+                        "target": "confirmation",
+                        "actions": "assignResponse"
+                    },
+                    {
+                        "target": "result",
+                        "actions": "assignResponse"
+                    }
+                ],
+                "ERROR": {
+                    "target": "error",
+                    "actions": "assignError"
+                }
+            }
+        },
+        "result": {
+            "on": {
+                "SEND": {
+                    "target": "sending"
+                },
+                "RESET": {
+                    "target": "idle",
+                    "actions": "resetContext"
+                },
+                "LOAD_HISTORY": {
+                    "target": "result",
+                    "actions": "assignHistory"
+                }
+            }
+        },
+        "confirmation": {
+            "on": {
+                "ACCEPT": {
+                    "target": "idle"
+                },
+                "REJECT": {
+                    "target": "idle"
+                },
+                "SEND": {
+                    "target": "sending"
+                }
+            }
+        },
+        "error": {
+            "on": {
+                "SEND": {
+                    "target": "sending"
+                },
+                "RESET": {
+                    "target": "idle",
+                    "actions": "resetContext"
+                },
+                "LOAD_HISTORY": {
+                    "target": "result",
+                    "actions": "assignHistory"
+                }
+            }
+        }
+    }
+}

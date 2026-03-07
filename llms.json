@@ -1,0 +1,51 @@
+[
+    {
+        "LLM_PROVIDER": "ollama",
+        "LLM_MODEL": "deepseek-r1:latest",
+        "LLM_API_KEY": "ollama",
+        "LLM_BASE_URL": "http://api:11434/v1",
+        "ACTIVE": true
+    },
+    {
+        "LLM_PROVIDER": "gemini",
+        "LLM_MODEL": "gemini-2.5-flash",
+        "LLM_API_KEY": "YOUR_GEMINI_API_KEY",
+        "LLM_BASE_URL": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "ACTIVE": false
+    },
+    {
+        "LLM_PROVIDER": "gemini",
+        "LLM_MODEL": "gemini-2.5-flash",
+        "LLM_API_KEY": "YOUR_GEMINI_API_KEY",
+        "LLM_BASE_URL": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "ACTIVE": false
+    },
+    {
+        "LLM_PROVIDER": "groq",
+        "LLM_MODEL": "llama-3.3-70b-versatile",
+        "LLM_API_KEY": "YOUR_GROQ_API_KEY",
+        "LLM_BASE_URL": "https://api.groq.com/openai/v1",
+        "ACTIVE": false
+    },
+    {
+        "LLM_PROVIDER": "groq",
+        "LLM_MODEL": "llama-3.1-8b-instant",
+        "LLM_API_KEY": "YOUR_GROQ_API_KEY",
+        "LLM_BASE_URL": "https://api.groq.com/openai/v1",
+        "ACTIVE": false
+    },
+    {
+        "LLM_PROVIDER": "groq",
+        "LLM_MODEL": "openai/gpt-oss-120b",
+        "LLM_API_KEY": "YOUR_GROQ_API_KEY",
+        "LLM_BASE_URL": "https://api.groq.com/openai/v1",
+        "ACTIVE": false
+    },
+    {
+        "LLM_PROVIDER": "together",
+        "LLM_MODEL": "meta-llama/Llama-3-70b-chat-hf",
+        "LLM_API_KEY": "YOUR_TOGETHER_API_KEY",
+        "LLM_BASE_URL": "https://api.together.xyz/v1",
+        "ACTIVE": false
+    }
+]
