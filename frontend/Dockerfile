@@ -5,12 +5,22 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+ARG BACKEND_URL=http://api:8000
+ENV BACKEND_URL=${BACKEND_URL}
+
+FROM base AS dev
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NODE_ENV=development
+ENV WATCHPACK_POLLING=true
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ARG BACKEND_URL=http://api:8000
-ENV BACKEND_URL=${BACKEND_URL}
 RUN npm run build
 
 FROM base AS runner

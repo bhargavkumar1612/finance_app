@@ -44,6 +44,19 @@ export const chatMachine = setup({
                 error: undefined,
             };
         }),
+        assignUserMessage: assign(({ context, event }) => {
+            if (event.type !== 'SEND') return {};
+            return {
+                messages: [
+                    ...context.messages,
+                    {
+                        id: crypto.randomUUID(),
+                        role: 'user' as const,
+                        text: event.message,
+                    }
+                ]
+            };
+        }),
         assignResponse: assign(({ context, event }) => {
             if (event.type !== 'RECEIVE') return {};
             return {
@@ -51,11 +64,6 @@ export const chatMachine = setup({
                 currentResponse: event.response,
                 messages: [
                     ...context.messages,
-                    {
-                        id: crypto.randomUUID(),
-                        role: 'user' as const,
-                        text: event.userMessage,
-                    },
                     {
                         id: crypto.randomUUID(),
                         role: 'assistant' as const,

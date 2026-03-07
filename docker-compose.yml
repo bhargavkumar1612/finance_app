@@ -22,12 +22,18 @@ services:
   frontend:
     build:
       context: ./frontend
+      target: dev
       args:
         - BACKEND_URL=http://api:8000
     ports:
       - "3000:3000"
     environment:
       - BACKEND_URL=http://api:8000
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
     depends_on:
       - api
 

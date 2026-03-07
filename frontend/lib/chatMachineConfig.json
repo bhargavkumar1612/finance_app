@@ -5,7 +5,8 @@
         "idle": {
             "on": {
                 "SEND": {
-                    "target": "sending"
+                    "target": "sending",
+                    "actions": "assignUserMessage"
                 },
                 "LOAD_HISTORY": {
                     "target": "result",
@@ -35,7 +36,8 @@
         "result": {
             "on": {
                 "SEND": {
-                    "target": "sending"
+                    "target": "sending",
+                    "actions": "assignUserMessage"
                 },
                 "RESET": {
                     "target": "idle",
@@ -56,14 +58,16 @@
                     "target": "idle"
                 },
                 "SEND": {
-                    "target": "sending"
+                    "target": "sending",
+                    "actions": "assignUserMessage"
                 }
             }
         },
         "error": {
             "on": {
                 "SEND": {
-                    "target": "sending"
+                    "target": "sending",
+                    "actions": "assignUserMessage"
                 },
                 "RESET": {
                     "target": "idle",
