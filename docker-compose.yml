@@ -1,13 +1,34 @@
 services:
   api:
-    build: .
+    build:
+      context: ./apps/api
+    working_dir: /app/apps/api
     ports:
       - "8000:8000"
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
+      - PYTHONPATH=/app/apps/api
       - DATABASE_URL=postgresql://finances:finances_secret@db:5432/finances
       - REDIS_URL=redis://redis:6379/0
+      - LLMS_CONFIG_PATH=/app/llms.json
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
+      # Optional LLM (OpenRouter / Ollama) — planner + insight; set in .env
+      - LLM_PROVIDER=${LLM_PROVIDER:-none}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-openai/gpt-4o-mini}
+      - OPENROUTER_HTTP_REFERER=${OPENROUTER_HTTP_REFERER:-}
+      - OPENROUTER_X_TITLE=${OPENROUTER_X_TITLE:-Finance Copilot}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
     depends_on:
       db:
         condition: service_healthy
@@ -16,12 +37,12 @@ services:
     volumes:
       - .:/app
       - ./llms.json:/app/llms.json:ro
-    entrypoint: [ "sh", "/app/scripts/entrypoint.sh" ]
+    entrypoint: [ "sh", "/app/apps/api/scripts/entrypoint.sh" ]
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build:
-      context: ./frontend
+      context: ./apps/web
       target: dev
       args:
         - BACKEND_URL=http://api:8000
@@ -31,11 +52,12 @@ services:
       - BACKEND_URL=http://api:8000
       - WATCHPACK_POLLING=true
     volumes:
-      - ./frontend:/app
+      - ./apps/web:/app
       - /app/node_modules
       - /app/.next
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   db:
     image: postgres:16-alpine

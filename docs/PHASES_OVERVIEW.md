@@ -2,6 +2,8 @@
 
 One-line goals and links to detailed plans. Use this as the index for “what’s next.”
 
+**Cross-cutting:** [AI_PRINCIPLES.md](AI_PRINCIPLES.md) — architecture and rules for all AI/chat work.
+
 | Phase | Goal | Plan |
 |-------|------|------|
 | **Phase 0** | Foundation — DB, layout, core contracts, manual transaction API, basic chat stub | (Done; see REQUIREMENTS_BREAKDOWN.md) |

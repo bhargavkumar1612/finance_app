@@ -1,0 +1,34 @@
+---
+description: AI app architecture and finance safety for Finance Copilot
+alwaysApply: true
+---
+
+# Finance Copilot — AI guidelines
+
+Full doc: `docs/AI_PRINCIPLES.md`. Follow on every AI/chat/agent change.
+
+## Architecture (4 layers)
+
+UI → `app/core/orchestrator.py` → `app/agents/*` → DB/API tools. Never call LLM from frontend; never skip orchestrator for `/v1/chat` flows.
+
+## Money and data
+
+- **Source of truth:** PostgreSQL + Ledger tools — not the LLM.
+- **Math:** application code only (net worth, spending, affordability).
+- **Mutations:** confirm card then commit (`transaction_confirm` pattern); model proposes, user confirms.
+
+## Contracts
+
+Use Pydantic in `app/core/schemas.py`: `PlannerOutput`, `ConversationState`, `AgentResponse`, `CardType`. UI renders `ui_type` + `data` — not parsed model prose. Extend existing enums/types; no parallel JSON shapes.
+
+## Agents
+
+Planner–executor loop in orchestrator; avoid agent swarms. Redis state via `state_manager.py`; frontend guided flows via `chatMachine.ts`.
+
+## LLM
+
+`app/services/llm_client.py` + `llm_settings.py`; `LLM_PROVIDER=none` must still work. Fallbacks for failures (`Intent.unknown`, `message_only`). No secrets in code or logs.
+
+## Tests
+
+Integration: `pytest tests/`. Mock LLM in unit tests; do not assert exact model wording.

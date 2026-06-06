@@ -1,0 +1,32 @@
+---
+description: Conventions when editing agents, chat API, or orchestrator
+globs: apps/api/app/agents/**/*,apps/api/app/core/orchestrator.py,apps/api/app/core/schemas.py,apps/api/app/core/state_manager.py,apps/api/app/api/chat.py,apps/api/app/services/llm_client.py
+alwaysApply: false
+---
+
+# Agents & chat
+
+See `docs/AI_PRINCIPLES.md`.
+
+## Planner
+
+Return `PlannerOutput` with `Intent` + `PlannerStep` list. Prefer router/rules fallback when LLM is off or fails.
+
+## Ledger
+
+DB reads/writes and numeric results only here (or shared services Ledger calls). Validate params; surface `LedgerError` to orchestrator.
+
+## Orchestrator
+
+Sequence: load Redis state → `plan()` → run steps → `build_ui_guide()` → persist state → `AgentResponse`. Do not return raw LLM strings to the client.
+
+## New intents
+
+1. Add `Intent` + card type in `schemas.py`
+2. Planner routing + Ledger/Insight action
+3. UI card component + `chatMachine` transition if guided
+4. Integration test in `apps/api/tests/integration/`
+
+## Insight (LLM)
+
+Narrative and suggestions only — numbers must come from tool results passed in, not invented in the prompt.

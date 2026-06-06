@@ -1,0 +1,13 @@
+# Test runner overlay — use: docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm api-test pytest ...
+services:
+  api-test:
+    extends:
+      service: api
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: pytest tests/ -q
+    profiles:
+      - test
