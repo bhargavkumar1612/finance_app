@@ -135,7 +135,7 @@ async def run(
     if action == "insert_recategorize":
         return await _insert_recategorize(session, user_id, params)
     if action == "list_accounts":
-        return await _list_accounts(session, user_id)
+        return await _list_accounts(session, user_id, params)
     if action == "update_account":
         return await _update_account(session, user_id, params)
     if action == "delete_account":
@@ -454,7 +454,14 @@ async def _compute_affordability(
     params: dict,
 ) -> dict:
     from app.services.affordability import calculate_affordability
-    return await calculate_affordability(session, user_id)
+    target_emi = params.get("target_emi")
+    hypothetical = params.get("hypothetical_monthly_income")
+    return await calculate_affordability(
+        session,
+        user_id,
+        target_emi=float(target_emi) if target_emi is not None else None,
+        hypothetical_monthly_income=float(hypothetical) if hypothetical is not None else None,
+    )
 
 
 # ----- Phase 4 Analytical Methods -----
@@ -1365,10 +1372,13 @@ async def _insert_recategorize(
     }
 
 
-async def _list_accounts(session: AsyncSession, user_id: UUID) -> dict:
-    result = await session.execute(
-        select(Account).where(Account.user_id == user_id).order_by(Account.created_at.asc())
-    )
+async def _list_accounts(session: AsyncSession, user_id: UUID, params: dict | None = None) -> dict:
+    params = params or {}
+    q = select(Account).where(Account.user_id == user_id)
+    account_type_filter = params.get("account_type")
+    if account_type_filter:
+        q = q.where(Account.account_type == str(account_type_filter).strip().lower())
+    result = await session.execute(q.order_by(Account.created_at.asc()))
     accounts = result.scalars().all()
     counts_result = await session.execute(
         select(Transaction.account_id, func.count(Transaction.id))
@@ -1377,7 +1387,13 @@ async def _list_accounts(session: AsyncSession, user_id: UUID) -> dict:
     )
     counts = {row[0]: int(row[1]) for row in counts_result.all()}
     items = [await _account_dict(session, a, user_id, counts.get(a.id, 0)) for a in accounts]
+    type_label = account_type_filter.replace("_", " ").upper() if account_type_filter else None
     if not items:
+        if type_label:
+            return {
+                "accounts": [],
+                "message": f"You don't have any {type_label} accounts yet. Add one from Accounts or ask me to create one.",
+            }
         return {"accounts": [], "message": "You have no accounts yet. Add one from Accounts or ask me to create one."}
     lines = []
     for a in items:
@@ -1397,7 +1413,8 @@ async def _list_accounts(session: AsyncSession, user_id: UUID) -> dict:
             extra = f", outstanding ₹{a['outstanding']:,.0f}"
         txns = a.get("transaction_count", 0)
         lines.append(f"• {a['name']}{inst} — {label}{extra} — {txns} transactions")
-    return {"accounts": items, "message": "Your accounts:\n" + "\n".join(lines)}
+    header = f"Your {type_label} accounts:" if type_label else "Your accounts:"
+    return {"accounts": items, "message": header + "\n" + "\n".join(lines)}
 
 
 async def _update_account(session: AsyncSession, user_id: UUID, params: dict) -> dict:

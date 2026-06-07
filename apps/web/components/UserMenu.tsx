@@ -7,13 +7,13 @@ import AppIcon from '@/components/icons/AppIcon';
 import styles from './UserMenu.module.css';
 
 interface UserMenuProps {
-    email: string;
+    username: string;
     initial: string;
     onNavigate?: () => void;
     onLogout: () => void;
 }
 
-export default function UserMenu({ email, initial, onNavigate, onLogout }: UserMenuProps) {
+export default function UserMenu({ username, initial, onNavigate, onLogout }: UserMenuProps) {
     const [open, setOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
@@ -56,8 +56,8 @@ export default function UserMenu({ email, initial, onNavigate, onLogout }: UserM
                 </div>
                 <div className={styles.meta}>
                     <span className={styles.label}>Signed in as</span>
-                    <span className={styles.email} title={email}>
-                        {email}
+                    <span className={styles.email} title={username}>
+                        {username}
                     </span>
                 </div>
             </button>

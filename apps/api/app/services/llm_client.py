@@ -20,6 +20,12 @@ class LLMProvider(str, Enum):
     ollama = "ollama"
 
 
+class LLMPlannerMode(str, Enum):
+    auto = "auto"
+    always = "always"
+    keywords_only = "keywords_only"
+
+
 def _normalize_openrouter_base_url(url: str) -> str:
     """
     OpenAI SDK expects base_url ending with /v1 exactly once.
@@ -39,6 +45,14 @@ def get_llm_provider() -> LLMProvider:
         return LLMProvider(raw)
     except ValueError:
         return LLMProvider.none
+
+
+def get_llm_planner_mode() -> LLMPlannerMode:
+    raw = get_llm_settings().llm_planner_mode.strip().lower()
+    try:
+        return LLMPlannerMode(raw)
+    except ValueError:
+        return LLMPlannerMode.auto
 
 
 def _openrouter_default_headers() -> dict[str, str] | None:

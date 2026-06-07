@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.core.llm_settings import clear_llm_settings_cache
-from app.services.llm_client import chat_complete, clear_llm_caches, get_llm_provider
+from app.services.llm_client import chat_complete, clear_llm_caches, get_llm_planner_mode, get_llm_provider
 
 pytestmark = pytest.mark.unit
 
@@ -49,3 +49,15 @@ def test_get_llm_provider_invalid_falls_back_to_none(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("LLM_PROVIDER", "not-a-real-provider")
     clear_llm_settings_cache()
     assert get_llm_provider().value == "none"
+
+
+def test_get_llm_planner_mode_defaults_to_auto(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    clear_llm_settings_cache()
+    assert get_llm_planner_mode().value == "auto"
+
+
+def test_get_llm_planner_mode_always(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_PLANNER_MODE", "always")
+    clear_llm_settings_cache()
+    assert get_llm_planner_mode().value == "always"

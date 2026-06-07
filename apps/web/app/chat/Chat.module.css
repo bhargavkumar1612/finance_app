@@ -110,7 +110,36 @@
 }
 
 .chatHeaderRow {
-    display: block;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.copyChatBtn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.copyChatBtn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.copyChatBtn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .chatHeaderText {

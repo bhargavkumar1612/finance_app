@@ -5,18 +5,26 @@ import uuid
 
 from httpx import AsyncClient
 
+from tests.auth_helpers import _token_cache, bearer, register_approve_login
+
 
 def unique_user_email(prefix: str = "slice1") -> str:
+    # Any unique string works as a username now (Round 9); the email-shaped
+    # value is kept so existing call sites read naturally.
     return f"{prefix}-{uuid.uuid4().hex[:10]}@test.local"
 
 
 def user_headers(email: str) -> dict[str, str]:
-    return {"X-User-Email": email}
+    """Bearer header for a user previously set up via ensure_user()."""
+    token = _token_cache.get(email)
+    if token is None:
+        raise RuntimeError(f"No token for {email!r}; call `await ensure_user(client, email)` first.")
+    return bearer(token)
 
 
 async def ensure_user(client: AsyncClient, email: str) -> None:
-    r = await client.post("/v1/login", json={"email": email})
-    assert r.status_code == 200
+    """Register, approve, and log in a test user (username == email string)."""
+    await register_approve_login(client, email)
 
 
 async def create_bank(

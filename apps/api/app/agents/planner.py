@@ -17,9 +17,8 @@ from google.adk.agents import BaseAgent, LlmAgent
 from openai import AsyncOpenAI
 
 from app.core.config import settings
-from app.services.llm_client import LLMProvider, get_llm_provider, try_get_env_async_client_and_model
-from app.core.schemas import Intent, PlannerOutput, PlannerStep
-from app.core.schemas import ConversationState
+from app.services.llm_client import LLMProvider, get_llm_planner_mode, get_llm_provider, try_get_env_async_client_and_model
+from app.core.schemas import Intent, PlannerOutput, PlannerStep, ConversationState, AgentTrace
 
 # 1. Setup Semantic Router
 encoder = FastEmbedEncoder(name="BAAI/bge-small-en-v1.5")
@@ -142,9 +141,9 @@ routes = [
     ),
 ]
 
-# Provide fallback router logic
+# Provide fallback router logic — auto_sync builds the local embedding index from routes
 try:
-    router = SemanticRouter(encoder=encoder, routes=routes)
+    router = SemanticRouter(encoder=encoder, routes=routes, auto_sync="local")
 except Exception as e:
     print(f"Failed to initialize Semantic Router: {e}")
     router = None
@@ -243,7 +242,11 @@ TOOLS = [
       "parameters": {
         "type": "object",
         "properties": {
-          "target_emi": { "type": "number", "description": "The optional target EMI amount they want to check" }
+          "target_emi": { "type": "number", "description": "The optional target EMI amount they want to check" },
+          "hypothetical_monthly_income": {
+            "type": "number",
+            "description": "Assumed monthly income when user clarifies salary but has not recorded it yet"
+          }
         },
         "required": []
       }
@@ -527,9 +530,22 @@ def get_client() -> AsyncOpenAI:
             _active_model = os.environ.get("OLLAMA_MODEL", "llama3.2")
     return _client
 
+def _looks_like_expense_capture(lower: str) -> bool:
+    """Distinguish 'add 200 for lunch' from 'where did I spend this month'."""
+    if re.search(r"\b(add|record|log)\s+\d", lower):
+        return True
+    if re.search(r"\b(spent|paid)\s+\d", lower):
+        return True
+    if re.search(r"\d+\s+(?:rupees?|rs|inr|₹)?\s*(?:for|on)\s+\w", lower):
+        return True
+    return False
+
+
 def _detect_spending_period(message: str) -> str | None:
     """Keyword fallback so chart/year spending requests reach the ledger tool."""
     lower = message.lower()
+    if _looks_like_expense_capture(lower):
+        return None
     spend_kw = any(
         w in lower
         for w in (
@@ -556,6 +572,140 @@ def _detect_spending_period(message: str) -> str | None:
     return "last_12_months" if chart_kw else "this_month"
 
 
+def _parse_money_amount(message: str) -> float | None:
+    """Parse INR amounts including 20k, 1.5L, 190000."""
+    lower = message.lower()
+    m = re.search(r"(\d+(?:\.\d+)?)\s*k\b", lower)
+    if m:
+        return float(m.group(1)) * 1000
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:l|lac|lakh|lacs|lakhs)\b", lower)
+    if m:
+        return float(m.group(1)) * 100000
+    m = re.search(r"(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d+)?)", message, re.I)
+    if m:
+        return float(m.group(1).replace(",", ""))
+    m = re.search(r"(\d[\d,]*(?:\.\d+)?)", message)
+    if m:
+        return float(m.group(1).replace(",", ""))
+    return None
+
+
+def _parse_emi_from_message(message: str) -> float | None:
+    lower = message.lower()
+    if "emi" not in lower and "afford" not in lower:
+        return None
+    m = re.search(
+        r"emi\s*(?:of|for|:)?\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*k?\b",
+        lower,
+    )
+    if m:
+        val = float(m.group(1))
+        tail = lower[m.end() : m.end() + 2]
+        if "k" in tail or re.search(rf"{re.escape(m.group(1))}\s*k", lower):
+            val *= 1000
+        return val
+    return _parse_money_amount(message)
+
+
+def _recent_affordability_context(state: ConversationState | None) -> dict | None:
+    if not state:
+        return None
+    afford = state.current_step == Intent.affordability_check.value
+    params: dict = {}
+    for h in reversed(state.agent_history[:-1]):
+        content = h.get("content") or ""
+        lower = content.lower()
+        if "afford" in lower or re.search(r"\bemi\b", lower):
+            afford = True
+            if "target_emi" not in params:
+                emi = _parse_emi_from_message(content)
+                if emi:
+                    params["target_emi"] = emi
+    if not afford:
+        return None
+    return params
+
+
+def _detect_affordability_income_followup(
+    message: str,
+    state: ConversationState | None,
+) -> PlannerOutput | None:
+    """Follow-up like 'my salary is 190k/mo' after an affordability question."""
+    ctx = _recent_affordability_context(state)
+    if ctx is None:
+        return None
+
+    lower = message.lower()
+    if not any(c in lower for c in ("salary", "income", "earn", "credited", "take home")):
+        return None
+    if re.search(r"\b(add|record|log)\s+(?:my\s+)?(?:salary|income)", lower):
+        return None
+
+    amount = _parse_money_amount(message)
+    if not amount:
+        return None
+
+    params = {**ctx, "hypothetical_monthly_income": amount}
+    return PlannerOutput(
+        intent=Intent.affordability_check,
+        steps=[PlannerStep(agent="ledger", action="compute_affordability", params=params)],
+        ui_mode="guided_flow",
+    )
+
+
+def _detect_affordability_emi_followup(
+    message: str,
+    state: ConversationState | None,
+) -> PlannerOutput | None:
+    """Follow-up like 'what about 30k emi instead?' after an affordability question."""
+    ctx = _recent_affordability_context(state)
+    if ctx is None:
+        return None
+    lower = message.lower()
+    if not any(c in lower for c in ("what about", "how about", "instead", "try ", "emi")):
+        return None
+    emi = _parse_emi_from_message(message) or _parse_money_amount(message)
+    if not emi:
+        return None
+    params = {**ctx, "target_emi": emi}
+    return PlannerOutput(
+        intent=Intent.affordability_check,
+        steps=[PlannerStep(agent="ledger", action="compute_affordability", params=params)],
+        ui_mode="guided_flow",
+    )
+
+
+def _detect_add_income(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if not any(w in lower for w in ("salary", "got paid", "record income", "add income", "received")):
+        return None
+    explicit_capture = any(
+        phrase in lower
+        for phrase in ("add ", "record income", "log income", "got paid", "received ")
+    )
+    clarification = any(
+        phrase in lower
+        for phrase in ("will be credited", "every month", "monthly salary", "take home", "i earn", "i make")
+    )
+    if clarification and not explicit_capture:
+        return None
+    amount = _parse_money_amount(message)
+    if amount is None:
+        return None
+    merchant = "Salary" if "salary" in lower else "Income"
+    return PlannerOutput(
+        intent=Intent.add_income,
+        steps=[
+            PlannerStep(
+                agent="ledger",
+                action="insert_income",
+                params={"amount": amount, "merchant": merchant, "category": "Income"},
+            )
+        ],
+        ui_mode="guided_flow",
+    )
+
+
 def _detect_add_expense(message: str) -> PlannerOutput | None:
     """Keyword fallback when semantic router / LLM are unavailable."""
     lower = message.lower()
@@ -569,9 +719,15 @@ def _detect_add_expense(message: str) -> PlannerOutput | None:
         return None
     amount = float(amount_match.group(1))
     merchant = None
-    for_match = re.search(r"\bfor\s+(.+)$", message, re.I)
-    if for_match:
-        merchant = for_match.group(1).strip().rstrip(".")
+    for pattern in (
+        r"\bfor\s+(.+?)(?:\.|$)",
+        r"\bspend\s+on\s+(.+?)(?:\.|$)",
+        r"\bon\s+(.+?)(?:\.|$)",
+    ):
+        m = re.search(pattern, message, re.I)
+        if m:
+            merchant = m.group(1).strip()
+            break
     return PlannerOutput(
         intent=Intent.add_expense,
         steps=[
@@ -585,9 +741,109 @@ def _detect_add_expense(message: str) -> PlannerOutput | None:
     )
 
 
+_ACCOUNT_BALANCE_ALIASES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("epf", ("epf", "provident fund", "employee provident")),
+    ("mutual_fund", ("mutual fund", "mutual funds")),
+    ("fixed_deposit", ("fixed deposit", " fd ", "my fd")),
+    ("recurring_deposit", ("recurring deposit", " rd ", "my rd")),
+    ("stock", ("stock", "stocks", "demat")),
+    ("bank", ("bank account", "my bank", "savings")),
+    ("wallet", ("wallet", "paytm", "phonepe")),
+    ("loan", ("loan", "emi account")),
+)
+
+
+def _account_type_in_message(lower: str) -> str | None:
+    if re.search(r"\bmf\b|\bmfs\b", lower):
+        return "mutual_fund"
+    for account_type, phrases in _ACCOUNT_BALANCE_ALIASES:
+        if any(phrase in lower for phrase in phrases):
+            return account_type
+    return None
+
+
+def _is_account_scoped_balance_query(lower: str) -> bool:
+    if _account_type_in_message(lower) is None:
+        return False
+    return any(
+        phrase in lower
+        for phrase in (
+            "how much",
+            "balance",
+            "money in",
+            "money do i have",
+            "what do i have",
+            "how much do i have",
+            "amount in",
+        )
+    )
+
+
+def _is_portfolio_style_query(lower: str) -> bool:
+    """Performance/allocation questions should use portfolio tools, not account list."""
+    if any(
+        w in lower
+        for w in (
+            "perform", "performance", "p&l", "pnl", "profit", "allocation",
+            "how are they", "how are my", "dashboard", "portfolio", "invested in",
+            "invested", "top performer", " doing",
+        )
+    ):
+        return True
+    return ("mutual fund" in lower or "mutual funds" in lower) and "how much" in lower
+
+
+def _detect_compound_affordability(message: str) -> PlannerOutput | None:
+    """Multi-topic safety/affordability questions → single affordability tool."""
+    lower = message.lower()
+    if not any(w in lower for w in ("compare", "safe", "enough", "afford", "holistic", "overall", "saving")):
+        return None
+    has_obligations = any(w in lower for w in ("obligation", "emi", "sip", "due", "bill", "loan"))
+    has_spending = any(w in lower for w in ("spend", "spending", "spent", "expense"))
+    if has_obligations and (has_spending or "afford" in lower or "safe" in lower):
+        return PlannerOutput(
+            intent=Intent.affordability_check,
+            steps=[PlannerStep(agent="ledger", action="compute_affordability", params={})],
+            ui_mode="guided_flow",
+        )
+    return None
+
+
+def _detect_account_balance_query(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if _is_portfolio_style_query(lower):
+        return None
+    if not _is_account_scoped_balance_query(lower):
+        return None
+    account_type = _account_type_in_message(lower)
+    if not account_type:
+        return None
+    return PlannerOutput(
+        intent=Intent.manage_accounts,
+        steps=[
+            PlannerStep(
+                agent="ledger",
+                action="list_accounts",
+                params={"account_type": account_type},
+            )
+        ],
+        ui_mode="guided_flow",
+    )
+
+
 def _detect_net_worth(message: str) -> PlannerOutput | None:
     lower = message.lower()
-    if any(w in lower for w in ("net worth", "how much money", "total assets", "what am i worth")):
+    if _is_account_scoped_balance_query(lower):
+        return None
+    if any(w in lower for w in ("net worth", "total assets", "what am i worth")):
+        return PlannerOutput(
+            intent=Intent.net_worth_query,
+            steps=[PlannerStep(agent="ledger", action="compute_net_worth", params={})],
+            ui_mode="guided_flow",
+        )
+    if "how much money" in lower and not any(
+        w in lower for w in (" in my ", " in the ", " in a ", "account")
+    ):
         return PlannerOutput(
             intent=Intent.net_worth_query,
             steps=[PlannerStep(agent="ledger", action="compute_net_worth", params={})],
@@ -610,8 +866,21 @@ def _detect_portfolio_summary(message: str) -> PlannerOutput | None:
             "mf p&l",
             "mf pnl",
             "mutual fund performance",
+            "what mutual funds",
+            "which mutual funds",
+            "mutual funds did i",
+            "mutual funds have i",
         )
-    ) or ("portfolio" in lower and "invest" in lower) or ("mf" in lower and any(w in lower for w in ("doing", "performance", "p&l", "pnl"))):
+    ) or ("portfolio" in lower and "invest" in lower) or ("mf" in lower and any(w in lower for w in ("doing", "performance", "performing", "p&l", "pnl"))):
+        return PlannerOutput(
+            intent=Intent.portfolio_summary,
+            steps=[PlannerStep(agent="ledger", action="portfolio_summary", params={})],
+            ui_mode="guided_flow",
+        )
+    mf_terms = ("mutual fund", "mutual funds")
+    if any(t in lower for t in mf_terms) and any(
+        w in lower for w in ("invest", "invested", "how much", "performing", "performance", "doing", "worth", "holdings")
+    ):
         return PlannerOutput(
             intent=Intent.portfolio_summary,
             steps=[PlannerStep(agent="ledger", action="portfolio_summary", params={})],
@@ -765,11 +1034,16 @@ def _detect_affordability(message: str) -> PlannerOutput | None:
             "affordability",
             "afford a loan",
             "afford new emi",
+            "afford an emi",
         )
     ):
+        params: dict = {}
+        emi = _parse_emi_from_message(message)
+        if emi:
+            params["target_emi"] = emi
         return PlannerOutput(
             intent=Intent.affordability_check,
-            steps=[PlannerStep(agent="ledger", action="compute_affordability", params={})],
+            steps=[PlannerStep(agent="ledger", action="compute_affordability", params=params)],
             ui_mode="guided_flow",
         )
     return None
@@ -923,7 +1197,6 @@ def _detect_record_transfer(message: str) -> PlannerOutput | None:
         "record transfer",
         "transfer to my",
         "sip payment",
-        "invested in",
     )
     has_transfer_phrase = any(phrase in lower for phrase in transfer_phrases)
     has_transfer_amount = bool(re.search(r"transfer\s+\d", lower))
@@ -1065,19 +1338,326 @@ def _slice3_keyword_route(message: str) -> PlannerOutput | None:
 
 
 def clean_deepseek_args(raw_args: str) -> dict:
-    import re
-    # Remove <think>...</think> blocks common in reasoning models
-    cleaned = re.sub(r'<think>.*?</think>', '', raw_args, flags=re.DOTALL)
+    # Remove reasoning blocks common in reasoning models (think / redacted_thinking tags)
+    cleaned = re.sub(
+        r"<\s*think\s*>.*?<\s*/\s*think\s*>",
+        "",
+        raw_args,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL)
     # Strip everything outside of the first { and last }
-    match = re.search(r'\{.*\}', cleaned, flags=re.DOTALL)
+    match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
     if match:
         cleaned = match.group()
-    
+
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError as e:
         print(f"JSON Decode error after cleaning: {e} | Raw string: {raw_args}")
         return {}
+
+
+def extract_thinking(raw: str) -> str | None:
+    """Extract model reasoning/thinking blocks before JSON parsing."""
+    for pattern in (
+        r"<\s*think\s*>(.*?)<\s*/\s*think\s*>",
+        r"<think>(.*?)</think>",
+    ):
+        match = re.search(pattern, raw, flags=re.DOTALL | re.IGNORECASE)
+        if match:
+            text = match.group(1).strip()
+            if text:
+                return text
+    return None
+
+
+def _infer_keyword_trace(output: PlannerOutput) -> AgentTrace:
+    tool = output.steps[0].action if output.steps else None
+    if output.message and not output.steps:
+        return AgentTrace(
+            route="fallback",
+            intent=output.intent.value,
+            note=output.message[:200],
+        )
+    return AgentTrace(route="keyword", intent=output.intent.value, tool=tool)
+
+
+def _attach_trace(output: PlannerOutput, trace: AgentTrace) -> PlannerOutput:
+    return output.model_copy(update={"trace": trace})
+
+
+def _semantic_route_hint(message: str) -> str | None:
+    if not router:
+        return None
+    try:
+        if not router.index.is_ready():
+            router.sync("local")
+        if router.index.is_ready():
+            route_result = router(message)
+            if route_result.name:
+                print(f"Semantic Router Hit: {route_result.name}")
+                return route_result.name
+    except Exception as e:
+        print(f"Router err: {e}")
+    return None
+
+
+def _build_planner_context_block(state: ConversationState | None) -> str:
+    if not state:
+        return ""
+    parts: list[str] = []
+    if state.current_step:
+        parts.append(f"Active flow: {state.current_step}")
+    pending = state.filled_slots.get("pending_mutation")
+    if pending:
+        parts.append(
+            "Pending user confirmation: "
+            f"{pending.get('intent')} via {pending.get('action')} "
+            f"with params {json.dumps(pending.get('params') or {}, default=str)[:300]}"
+        )
+    prior = state.agent_history[:-1] if state.agent_history else []
+    if prior:
+        lines = [
+            f"{h.get('role', 'user')}: {(h.get('content') or '')[:160]}"
+            for h in prior[-6:]
+        ]
+        parts.append("Recent conversation:\n" + "\n".join(lines))
+    return "\n\n".join(parts)
+
+
+def _needs_contextual_llm(message: str, state: ConversationState | None) -> bool:
+    """True when the message likely needs prior turns to interpret correctly."""
+    if not state:
+        return False
+    lower = message.lower().strip()
+    prior = [h for h in state.agent_history[:-1] if (h.get("content") or "").strip()]
+    if not prior:
+        return False
+
+    follow_up_cues = (
+        "but ",
+        "what about",
+        "how about",
+        "instead",
+        "also ",
+        "you said",
+        "earlier",
+        "that emi",
+        "that loan",
+        "same ",
+        "still ",
+        "actually ",
+        "however ",
+        "though ",
+        "even if",
+        "assuming ",
+        "if my",
+        "will be credited",
+        "every month",
+        "monthly salary",
+        "based on that",
+        "given that",
+        "in that case",
+    )
+    if any(c in lower for c in follow_up_cues):
+        return True
+
+    if state.current_step in (
+        Intent.affordability_check.value,
+        Intent.spending_analysis.value,
+        Intent.net_worth_query.value,
+        Intent.portfolio_summary.value,
+        Intent.upcoming_obligations.value,
+    ):
+        return True
+
+    if state.filled_slots.get("pending_mutation") and any(
+        w in lower for w in ("change", "make it", "update", "instead", "lower", "higher")
+    ):
+        return True
+
+    if len(lower.split()) > 18 or lower.count("?") > 1:
+        return True
+    if " and " in lower and any(
+        w in lower for w in ("afford", "spend", "emi", "invest", "save", "loan", "sip", "salary")
+    ):
+        return True
+    return False
+
+
+def _prefer_llm_planner(message: str, state: ConversationState | None) -> bool:
+    if get_llm_provider() == LLMProvider.none:
+        return False
+    mode = get_llm_planner_mode()
+    if mode.value == "keywords_only":
+        return False
+    if mode.value == "always":
+        return True
+    return _needs_contextual_llm(message, state)
+
+
+async def _llm_plan(
+    msg: str,
+    state: ConversationState | None,
+    *,
+    semantic_hint: str | None = None,
+    contextual: bool = False,
+) -> PlannerOutput:
+    """Route via LLM with conversation context. Ledger tools still execute deterministically."""
+    client = get_client()
+    model_name = _active_model
+    context_block = _build_planner_context_block(state)
+
+    active_tools = TOOLS
+    if semantic_hint and not contextual:
+        active_tools = [t for t in TOOLS if t["function"]["name"] == semantic_hint] or TOOLS
+
+    tools_description = json.dumps([t["function"] for t in active_tools], indent=2)
+    context_section = ""
+    if context_block:
+        context_section = (
+            f"\n\nConversation context (use this to fill tool parameters and interpret follow-ups):\n"
+            f"{context_block}\n"
+        )
+    hint_section = ""
+    if semantic_hint:
+        hint_section = (
+            f"\nSemantic router hint: `{semantic_hint}` "
+            "(suggestion only — pick the best tool using full context).\n"
+        )
+
+    system_prompt = (
+        "You are Finance Copilot, an AI assistant for a personal finance app. "
+        f"Today's date is {date.today().isoformat()}. "
+        "Your job is to route user requests to the correct ledger function OR answer general questions.\n\n"
+        "You have the following skills (tools) available:\n"
+        f"{tools_description}\n"
+        f"{context_section}"
+        f"{hint_section}\n"
+        "Context rules:\n"
+        "- Use prior messages to fill parameters (e.g. target_emi from an earlier EMI question).\n"
+        "- If the user clarifies salary/income during an affordability discussion, call compute_affordability "
+        "with hypothetical_monthly_income — do NOT call insert_income unless they explicitly ask to record/add/log income.\n"
+        "- For spending summaries, charts, or dashboards, call compute_monthly_spend.\n"
+        "- Never invent numbers; extract amounts from the current or prior user messages.\n"
+        "- Never tell the user you cannot create charts — the UI renders them from tool results.\n\n"
+        "You MUST respond ONLY with a valid JSON object. Do not include any text outside the JSON object.\n"
+        "If the user request requires a skill/tool, use this format:\n"
+        "{\n"
+        '  "tool": "function_name",\n'
+        '  "parameters": { "param1": "value1" }\n'
+        "}\n\n"
+        "If the user is chatting generally or no tool fits, reply with:\n"
+        "{\n"
+        '  "message": "Your helpful response here"\n'
+        "}"
+    )
+
+    messages = [{"role": "system", "content": system_prompt}]
+    if state and state.agent_history:
+        for h in state.agent_history[-8:]:
+            messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+    messages.append({"role": "user", "content": msg})
+
+    try:
+        response_stream = await client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            temperature=0.1,
+            stream=True,
+        )
+
+        text_response = ""
+        async for chunk in response_stream:
+            if chunk.choices and chunk.choices[0].delta.content is not None:
+                text_response += chunk.choices[0].delta.content
+
+        thinking = extract_thinking(text_response)
+        parsed_json = clean_deepseek_args(text_response)
+        base_route = "llm_context" if contextual else "llm_tool"
+
+        if "tool" in parsed_json:
+            extracted_name = parsed_json["tool"]
+            params = parsed_json.get("parameters", {})
+
+            if extracted_name == "insert_transaction" and "amount" in params:
+                if params["amount"] > 0:
+                    extracted_name = "insert_income"
+                else:
+                    params["amount"] = -abs(params["amount"])
+
+            intent = _INTENT_MAP.get(extracted_name, Intent.unknown)
+            trace = AgentTrace(
+                route=base_route,
+                intent=intent.value,
+                tool=extracted_name,
+                semantic_match=semantic_hint,
+                thinking=thinking,
+                model=model_name,
+                note="LLM selected ledger tool (context-aware)" if contextual else "LLM selected ledger tool",
+            )
+            return _attach_trace(
+                PlannerOutput(
+                    intent=intent,
+                    steps=[PlannerStep(agent="ledger", action=extracted_name, params=params)],
+                    ui_mode="guided_flow",
+                ),
+                trace,
+            )
+
+        if "message" in parsed_json:
+            return _attach_trace(
+                PlannerOutput(
+                    intent=Intent.unknown,
+                    steps=[],
+                    ui_mode="guided_flow",
+                    message=parsed_json["message"],
+                ),
+                AgentTrace(
+                    route="llm_message",
+                    intent="unknown",
+                    thinking=thinking,
+                    model=model_name,
+                    semantic_match=semantic_hint,
+                    note="LLM conversational reply (no ledger tool)",
+                ),
+            )
+
+        if semantic_hint:
+            intent = _INTENT_MAP.get(semantic_hint, Intent.unknown)
+            params: dict = {}
+            if semantic_hint == "compute_monthly_spend":
+                params["period"] = _detect_spending_period(msg) or "this_month"
+            return _attach_trace(
+                PlannerOutput(
+                    intent=intent,
+                    steps=[PlannerStep(agent="ledger", action=semantic_hint, params=params)],
+                    ui_mode="guided_flow",
+                    message="Processed via semantic fallback.",
+                ),
+                AgentTrace(
+                    route="semantic",
+                    intent=intent.value,
+                    tool=semantic_hint,
+                    semantic_match=semantic_hint,
+                    thinking=thinking,
+                    model=model_name,
+                ),
+            )
+
+        return _attach_trace(
+            PlannerOutput(intent=Intent.unknown, steps=[], ui_mode="guided_flow", message="Could not determine the routing."),
+            AgentTrace(route="fallback", intent="unknown", thinking=thinking, model=model_name),
+        )
+
+    except Exception as e:
+        print(f"OpenAI Plan Error: {e}")
+        return _attach_trace(
+            PlannerOutput(intent=Intent.unknown, steps=[], ui_mode="guided_flow"),
+            AgentTrace(route="fallback", intent="unknown", note=f"LLM error: {e}"),
+        )
+
 
 class CoordinatorAgent(BaseAgent):
     """
@@ -1091,7 +1671,15 @@ class CoordinatorAgent(BaseAgent):
         if not msg:
             return PlannerOutput(intent=Intent.unknown, steps=[], ui_mode="guided_flow")
 
-        function_name = None
+        if _prefer_llm_planner(msg, state):
+            hint = _semantic_route_hint(msg)
+            llm_result = await _llm_plan(msg, state, semantic_hint=hint, contextual=True)
+            if llm_result.steps or (
+                llm_result.message
+                and llm_result.trace
+                and llm_result.trace.route not in ("fallback",)
+            ):
+                return llm_result
 
         # S3.4 detectors must run before _detect_spending_period since "spend/spent" is a broad keyword
         explain = _detect_explain_transaction(msg)
@@ -1100,29 +1688,52 @@ class CoordinatorAgent(BaseAgent):
 
         recat = _detect_recategorize_transaction(msg)
         if recat:
-            return recat
+            return _attach_trace(recat, _infer_keyword_trace(recat))
+
+        affordability = _detect_affordability(msg)
+        if affordability:
+            return _attach_trace(affordability, _infer_keyword_trace(affordability))
+
+        compound = _detect_compound_affordability(msg)
+        if compound:
+            return _attach_trace(compound, _infer_keyword_trace(compound))
+
+        afford_followup = _detect_affordability_income_followup(msg, state)
+        if afford_followup:
+            return _attach_trace(afford_followup, _infer_keyword_trace(afford_followup))
+
+        emi_followup = _detect_affordability_emi_followup(msg, state)
+        if emi_followup:
+            return _attach_trace(emi_followup, _infer_keyword_trace(emi_followup))
+
+        expense = _detect_add_expense(msg)
+        if expense:
+            return _attach_trace(expense, _infer_keyword_trace(expense))
 
         spending_period = _detect_spending_period(msg)
         if spending_period:
-            return PlannerOutput(
-                intent=Intent.spending_analysis,
-                steps=[
-                    PlannerStep(
-                        agent="ledger",
-                        action="compute_monthly_spend",
-                        params={"period": spending_period},
-                    )
-                ],
-                ui_mode="guided_flow",
+            return _attach_trace(
+                PlannerOutput(
+                    intent=Intent.spending_analysis,
+                    steps=[
+                        PlannerStep(
+                            agent="ledger",
+                            action="compute_monthly_spend",
+                            params={"period": spending_period},
+                        )
+                    ],
+                    ui_mode="guided_flow",
+                ),
+                AgentTrace(
+                    route="keyword",
+                    intent=Intent.spending_analysis.value,
+                    tool="compute_monthly_spend",
+                ),
             )
 
-        lower = msg.lower()
-        if any(w in lower for w in ("salary", "got paid", "record income", "add income", "received")):
-            return PlannerOutput(
-                intent=Intent.add_income,
-                steps=[PlannerStep(agent="ledger", action="insert_income", params={"merchant": "Income"})],
-                ui_mode="guided_flow",
-            )
+        income = _detect_add_income(msg)
+        if income:
+            return _attach_trace(income, _infer_keyword_trace(income))
 
         acct_guided = _detect_create_account_guided(msg)
         if acct_guided:
@@ -1136,9 +1747,9 @@ class CoordinatorAgent(BaseAgent):
         if recurring:
             return recurring
 
-        expense = _detect_add_expense(msg)
-        if expense:
-            return expense
+        account_balance = _detect_account_balance_query(msg)
+        if account_balance:
+            return account_balance
 
         net_worth = _detect_net_worth(msg)
         if net_worth:
@@ -1157,7 +1768,7 @@ class CoordinatorAgent(BaseAgent):
             return slice3
 
         if get_llm_provider() == LLMProvider.none:
-            return PlannerOutput(
+            out = PlannerOutput(
                 intent=Intent.unknown,
                 steps=[],
                 ui_mode="guided_flow",
@@ -1166,113 +1777,10 @@ class CoordinatorAgent(BaseAgent):
                     "Try 'what's due this month?'"
                 ),
             )
+            return _attach_trace(out, AgentTrace(route="fallback", intent="unknown", note="LLM_PROVIDER=none"))
 
-        # 1. Semantic Routing (Fast Intent Classification)
-        if router:
-            try:
-                route_result = router(msg)
-                if route_result.name:
-                    print(f"Semantic Router Hit: {route_result.name}")
-                    function_name = route_result.name
-            except Exception as e:
-                print(f"Router err: {e}")
-
-        client = get_client()
-
-        # Filter tools if semantic router found a perfect match
-        active_tools = TOOLS
-        if function_name:
-            active_tools = [t for t in TOOLS if t["function"]["name"] == function_name] or TOOLS
-
-        tools_description = json.dumps([t["function"] for t in active_tools], indent=2)
-
-        system_prompt = (
-            "You are Finance Copilot, an AI assistant for a personal finance app. "
-            f"Today's date is {date.today().isoformat()}. "
-            "Your job is to route user requests to the correct ledger function OR answer their general questions.\n\n"
-            "You have the following skills (tools) available:\n"
-            f"{tools_description}\n\n"
-            "For spending summaries, pie charts, histograms, or dashboards, you MUST call compute_monthly_spend. "
-            "Never tell the user you cannot create charts—the UI renders them from tool results.\n"
-            "You MUST respond ONLY with a valid JSON object. Do not include any text outside the JSON object.\n"
-            "If the user request requires a skill/tool, use this format:\n"
-            "{\n"
-            '  "tool": "function_name",\n'
-            '  "parameters": { "param1": "value1" }\n'
-            "}\n\n"
-            "If the user is just chatting, asking a general finance question, or the request does NOT match any tool, reply with a helpful conversational message using this format:\n"
-            "{\n"
-            '  "message": "Your helpful response here"\n'
-            "}"
-        )
-
-        messages = [{"role": "system", "content": system_prompt}]
-        if state and state.agent_history:
-            for h in state.agent_history[-6:]:
-                messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
-        messages.append({"role": "user", "content": msg})
-
-
-        try:
-            response_stream = await client.chat.completions.create(
-                model=_active_model,
-                messages=messages,
-                temperature=0.1,
-                stream=True
-            )
-
-            text_response = ""
-            async for chunk in response_stream:
-                if chunk.choices and chunk.choices[0].delta.content is not None:
-                    text_response += chunk.choices[0].delta.content
-            
-            # Extract JSON from response
-            parsed_json = clean_deepseek_args(text_response)
-            
-            if "tool" in parsed_json:
-                extracted_name = parsed_json["tool"]
-                params = parsed_json.get("parameters", {})
-                    
-                if extracted_name == "insert_transaction" and "amount" in params:
-                    if params["amount"] > 0:
-                        extracted_name = "insert_income"
-                    else:
-                        params["amount"] = -abs(params["amount"])
-                         
-                intent = _INTENT_MAP.get(extracted_name, Intent.unknown)
-                
-                return PlannerOutput(
-                    intent=intent,
-                    steps=[PlannerStep(agent="ledger", action=extracted_name, params=params)],
-                    ui_mode="guided_flow",
-                )
-            elif "message" in parsed_json:
-                 text_response = parsed_json["message"]
-                 return PlannerOutput(
-                     intent=Intent.unknown, 
-                     steps=[], 
-                     ui_mode="guided_flow", 
-                     message=text_response
-                 )
-            else:
-                # Fallback mapping if LLM returns text but router hit successfully
-                if function_name:
-                    intent = _INTENT_MAP.get(function_name, Intent.unknown)
-                    params: dict = {}
-                    if function_name == "compute_monthly_spend":
-                        params["period"] = spending_period or _detect_spending_period(msg) or "this_month"
-                    return PlannerOutput(
-                        intent=intent,
-                        steps=[PlannerStep(agent="ledger", action=function_name, params=params)],
-                        ui_mode="guided_flow",
-                        message="Processed via fast routing."
-                    )
-
-                return PlannerOutput(intent=Intent.unknown, steps=[], ui_mode="guided_flow", message="Could not determine the routing.")
-
-        except Exception as e:
-            print(f"OpenAI Plan Error: {e}")
-            return PlannerOutput(intent=Intent.unknown, steps=[], ui_mode="guided_flow")
+        hint = _semantic_route_hint(msg)
+        return await _llm_plan(msg, state, semantic_hint=hint, contextual=False)
 
 
 # Create a singleton ADK agent for orchestrator
@@ -1280,4 +1788,7 @@ coordinator = CoordinatorAgent()
 
 async def plan(message: str, state: ConversationState | None = None) -> PlannerOutput:
     """Wrapper function to maintain backward compatibility with orchestrator imports"""
-    return await coordinator.invoke(message, state)
+    output = await coordinator.invoke(message, state)
+    if output.trace is None:
+        output = _attach_trace(output, _infer_keyword_trace(output))
+    return output

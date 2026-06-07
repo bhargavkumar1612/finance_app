@@ -814,3 +814,117 @@ Numbers remain deterministic — never from LLM.
 - `apps/web/components/cards/AccountListCard.tsx`
 
 **Decided on:** 2026-06-07 (Round 7)
+
+---
+
+## Identity and access
+
+### Username (login identifier)
+
+**Definition:** Unique string the user chooses at registration — **not required** to be a valid email address. Used for login and displayed in the user menu. Replaces the legacy dev-only "email-only" login.
+
+**Synonyms (avoid in code/UI):** "email" on login/register forms (deprecated for auth UX)
+
+**Canonical in code:** `User.username` (migrate from `User.email`); API fields `username`; UI label **Username**
+
+**Example:** `bhargav`, `family-hdfc`, `priya-main`
+
+**Not the same as:** Email delivery — no automated email in v1
+
+**Related code:**
+- `app/db/models.py` (`User`)
+- `app/api/auth.py` *(to be replaced)*
+- `apps/web/app/login/page.tsx`
+- `apps/web/lib/AuthContext.tsx`
+
+**Decided on:** 2026-06-07 (Round 9)
+
+---
+
+### User status
+
+**Definition:** Gate for whether a registered user may use the app.
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Registered; awaiting super admin approval — **cannot log in** |
+| `approved` | May log in with username + password |
+| `rejected` | Signup denied; same username blocked for **24h** cool-off (super admin may override) |
+| `disabled` | Login blocked; **data retained** until hard delete |
+
+**Synonyms (avoid in code/UI):** "active/inactive" without mapping to these four values
+
+**Canonical in code:** `User.status` enum
+
+**Related code:**
+- `app/db/models.py` (`User`)
+- `docs/decisions/003-auth-super-admin.md`
+
+**Decided on:** 2026-06-07 (Round 9)
+
+---
+
+### Super admin
+
+**Definition:** Bootstrap account (created via one-time script/migration) with full user-management powers: view user count, approve/reject signups, handle forgot-password queue, disable or hard-delete users, set new passwords offline.
+
+**Synonyms (avoid in code/UI):** "admin user" without role check
+
+**Canonical in code:** `User.role` = `super_admin`; Admin UI at `/admin`; API prefix `/v1/admin/*`
+
+**Not the same as:** Normal **approved** user — no access to other users' data
+
+**Related code:**
+- `app/api/auth.py` *(admin routes)*
+- `apps/web/app/admin/` *(planned)*
+
+**Decided on:** 2026-06-07 (Round 9)
+
+---
+
+### Signup approval queue
+
+**Definition:** List of **`pending`** registrations waiting for super admin **approve** or **reject**. Approved users may log in; rejected usernames enter 24h cool-off unless super admin overrides.
+
+**Synonyms (avoid in code/UI):** open self-registration
+
+**Canonical in code:** `User.status=pending`; Admin UI section "Pending signups"
+
+**Related code:**
+- `docs/decisions/003-auth-super-admin.md`
+- `apps/web/app/admin/` *(planned)*
+
+**Decided on:** 2026-06-07 (Round 9)
+
+---
+
+### Password reset queue
+
+**Definition:** Forgot-password requests from approved users. Super admin sets a **new password** in Admin UI and shares it **offline** — no email automation.
+
+**Synonyms (avoid in code/UI):** "send reset link", "magic link"
+
+**Canonical in code:** `PasswordResetRequest` or equivalent; Admin UI section "Password resets"
+
+**Related code:**
+- `docs/decisions/003-auth-super-admin.md`
+- `apps/web/app/admin/` *(planned)*
+
+**Decided on:** 2026-06-07 (Round 9)
+
+---
+
+### Session token
+
+**Definition:** Long-lived bearer token issued on successful login (approved user only). Stored in browser **`localStorage`**; sent as `Authorization: Bearer …` on API calls. Replaces `X-User-Email` header trust.
+
+**Synonyms (avoid in code/UI):** trusting `X-User-Email`, `dev@local` fallback in production
+
+**Canonical in code:** `get_current_user` validates token; `localStorage` key e.g. `finance_auth_token`
+
+**Related code:**
+- `app/api/auth.py`
+- `apps/web/lib/api.ts` (`authHeaders`)
+- `apps/web/lib/AuthContext.tsx`
+
+**Decided on:** 2026-06-07 (Round 9)

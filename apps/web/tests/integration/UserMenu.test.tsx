@@ -16,7 +16,7 @@ describe('UserMenu', () => {
 
         render(
             <UserMenu
-                email="test@local.test"
+                username="testuser"
                 initial="T"
                 onLogout={onLogout}
             />,
@@ -37,7 +37,7 @@ describe('UserMenu', () => {
 
         render(
             <UserMenu
-                email="test@local.test"
+                username="testuser"
                 initial="T"
                 onLogout={vi.fn()}
             />,
@@ -55,7 +55,7 @@ describe('UserMenu', () => {
 
         render(
             <UserMenu
-                email="test@local.test"
+                username="testuser"
                 initial="T"
                 onLogout={onLogout}
             />,

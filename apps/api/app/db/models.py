@@ -16,7 +16,12 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[Optional[str]] = mapped_column(Text, unique=True, nullable=True)
+    # Login identifier — any unique string, not required to be an email (Round 9).
+    username: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    password_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # bcrypt
+    role: Mapped[str] = mapped_column(Text, nullable=False, default="user")  # user | super_admin
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")  # pending | approved | rejected | disabled
+    rejected_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)  # 24h cool-off anchor
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     accounts: Mapped[list["Account"]] = relationship(back_populates="user")
@@ -27,6 +32,47 @@ class User(Base):
     financial_persona: Mapped[Optional["UserFinancialPersona"]] = relationship(
         back_populates="user", uselist=False
     )
+    auth_tokens: Mapped[list["AuthToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    password_reset_requests: Mapped[list["PasswordResetRequest"]] = relationship(
+        back_populates="user",
+        foreign_keys="PasswordResetRequest.user_id",
+        cascade="all, delete-orphan",
+    )
+
+
+class AuthToken(Base):
+    """Long-lived bearer session token (DB-backed so logout/disable revoke it).
+    Only the sha256 hash of the token secret is stored — never the secret."""
+
+    __tablename__ = "auth_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="auth_tokens")
+
+
+class PasswordResetRequest(Base):
+    """Forgot-password request — surfaces in the super admin queue. The admin
+    sets a new password offline (no email automation)."""
+
+    __tablename__ = "password_reset_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")  # open | resolved
+    requested_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    resolved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+
+    user: Mapped["User"] = relationship(back_populates="password_reset_requests", foreign_keys=[user_id])
 
 
 class Account(Base):

@@ -63,6 +63,32 @@
     border-radius: var(--radius-xs);
 }
 
+.success {
+    color: var(--success);
+    font-size: 0.9rem;
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+    padding: 0.75rem;
+    border-radius: var(--radius-xs);
+    margin-bottom: 1rem;
+}
+
+.links {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    font-size: 0.875rem;
+}
+
+.links a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.links a:hover {
+    text-decoration: underline;
+}
+
 @media (max-width: 767px) {
     .loginBox {
         padding: 2rem 1.5rem;

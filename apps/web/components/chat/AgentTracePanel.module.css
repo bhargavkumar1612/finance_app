@@ -1,0 +1,137 @@
+.tracePanel {
+    margin-top: 10px;
+    margin-bottom: 4px;
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    font-size: 0.78rem;
+    overflow: hidden;
+}
+
+.traceHeader {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+}
+
+.traceTitle {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+}
+
+.badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.badgeRoute,
+.badgeTool,
+.badgeIntent {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+}
+
+.badgeRoute {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.badgeTool {
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.badgeIntent {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.traceMeta {
+    margin: 0;
+    padding: 0 10px 8px;
+    display: grid;
+    gap: 4px;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+    padding-top: 8px;
+}
+
+.traceRow {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 8px;
+}
+
+.traceRow dt {
+    margin: 0;
+    color: var(--text-muted);
+}
+
+.traceRow dd {
+    margin: 0;
+    color: var(--text-secondary, var(--text-primary));
+    word-break: break-word;
+}
+
+.thinkingPanel {
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.thinkingSummary {
+    cursor: pointer;
+    padding: 8px 10px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    user-select: none;
+    list-style: none;
+}
+
+.thinkingSummary::-webkit-details-marker {
+    display: none;
+}
+
+.thinkingSummary::before {
+    content: '▸ ';
+    display: inline-block;
+    transition: transform 0.15s ease;
+}
+
+.thinkingPanel[open] .thinkingSummary::before {
+    transform: rotate(90deg);
+}
+
+.thinkingText {
+    margin: 0;
+    padding: 0 10px 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.thinkingHint {
+    margin: 0;
+    padding: 0 10px 10px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-style: italic;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+    padding-top: 8px;
+}

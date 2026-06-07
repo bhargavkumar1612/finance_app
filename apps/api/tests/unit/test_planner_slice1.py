@@ -21,6 +21,8 @@ pytestmark = pytest.mark.unit
         "how is my portfolio doing",
         "how are my mfs doing",
         "show my MF P&L",
+        "what mutual funds did i invest in and how much and how are they performing",
+        "which mutual funds do I hold and how are they doing",
     ],
 )
 def test_detect_portfolio_summary(message: str) -> None:

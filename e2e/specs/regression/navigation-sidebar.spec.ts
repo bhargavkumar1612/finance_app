@@ -53,7 +53,7 @@ test.describe('@regression navigation sidebar', () => {
     }
     await logoutViaSidebar(page);
     await expect(page).toHaveURL(/\/login/);
-    await expect(page.getByPlaceholder('user@example.com')).toBeVisible();
+    await expect(page.locator('#login-username')).toBeVisible();
   });
 
   test('REG-S005: Settings link loads settings page', async ({ page }, testInfo) => {

@@ -9,6 +9,8 @@ from app.db.models import (
     ChatSession,
     ChatMessage,
     RecurringBill,
+    AuthToken,
+    PasswordResetRequest,
 )
 
 __all__ = [
@@ -21,6 +23,8 @@ __all__ = [
     "ChatSession",
     "ChatMessage",
     "RecurringBill",
+    "AuthToken",
+    "PasswordResetRequest",
     "async_session_maker",
     "get_async_session",
 ]

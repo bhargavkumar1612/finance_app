@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { IndianRupee, Landmark, List, MessageSquare, Settings } from 'lucide-react';
+import { IndianRupee, Landmark, List, MessageSquare, Settings, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import AppIcon from '@/components/icons/AppIcon';
 import UserMenu from '@/components/UserMenu';
@@ -14,9 +14,10 @@ const NAV = [
     { href: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 
-function userInitial(email: string): string {
-    const local = email.split('@')[0] ?? '';
-    return (local[0] ?? '?').toUpperCase();
+const ADMIN_NAV = { href: '/admin', label: 'Admin', icon: ShieldCheck } as const;
+
+function userInitial(username: string): string {
+    return (username.trim()[0] ?? '?').toUpperCase();
 }
 
 interface SidebarProps {
@@ -27,6 +28,7 @@ interface SidebarProps {
 export default function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
     const pathname = usePathname();
     const { user, logout } = useAuth();
+    const navItems = user?.role === 'super_admin' ? [...NAV, ADMIN_NAV] : NAV;
 
     const handleLogout = () => {
         onNavigate?.();
@@ -46,7 +48,7 @@ export default function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
                 <span className={styles.logoText}>Finance Copilot</span>
             </div>
             <nav className={styles.nav}>
-                {NAV.map(({ href, label, icon }) => (
+                {navItems.map(({ href, label, icon }) => (
                     <Link
                         key={href}
                         href={href}
@@ -63,8 +65,8 @@ export default function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
             <div className={styles.footer}>
                 {user && (
                     <UserMenu
-                        email={user.email}
-                        initial={userInitial(user.email)}
+                        username={user.username}
+                        initial={userInitial(user.username)}
                         onNavigate={onNavigate}
                         onLogout={handleLogout}
                     />

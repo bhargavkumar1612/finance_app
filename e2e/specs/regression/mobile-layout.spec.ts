@@ -74,7 +74,7 @@ test.describe('@regression mobile layout', () => {
   test('REG-ML005: logout via user menu on mobile', async ({ page }) => {
     await loginViaUi(page, `mobile-m005-${Date.now()}@local.test`);
     await logoutViaSidebar(page);
-    await expect(page.getByPlaceholder('user@example.com')).toBeVisible();
+    await expect(page.locator('#login-username')).toBeVisible();
   });
 
   test('REG-ML006: root and import redirects', async ({ page }) => {

@@ -5,6 +5,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
 export default defineConfig({
   testDir: '.',
   testMatch: /specs\/.*\.spec\.ts/,
+  globalSetup: require.resolve('./global-setup'),
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

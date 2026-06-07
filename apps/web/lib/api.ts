@@ -17,9 +17,18 @@ export interface ChatApiResponse {
     conversation_id: string;
 }
 
-export interface LoginResponse {
+export type UserRole = 'user' | 'super_admin';
+
+export interface AuthUser {
     id: string;
-    email: string;
+    username: string;
+    role: UserRole;
+    status: string;
+}
+
+export interface LoginResponse {
+    token: string;
+    user: AuthUser;
 }
 
 export interface ChatSession {
@@ -228,17 +237,16 @@ export interface ImportConfirmResponse {
 
 const BASE = ''; // empty = same-origin (Next.js rewrites handle proxying in dev)
 
+export const AUTH_TOKEN_KEY = 'finance_auth_token';
+
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...extra,
     };
     try {
-        const stored = localStorage.getItem('finance_user');
-        if (stored) {
-            const u = JSON.parse(stored);
-            if (u.email) headers['X-User-Email'] = u.email;
-        }
+        const token = localStorage.getItem(AUTH_TOKEN_KEY);
+        if (token) headers['Authorization'] = `Bearer ${token}`;
     } catch {
         /* ignore */
     }
@@ -295,10 +303,116 @@ export async function checkApiHealth(): Promise<boolean> {
     }
 }
 
-export async function login(email: string): Promise<LoginResponse> {
-    return request<LoginResponse>('/v1/login', {
+// --- Auth (Round 9: username + password, super-admin-gated) -------------
+export async function login(username: string, password: string): Promise<LoginResponse> {
+    return request<LoginResponse>('/v1/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ username, password }),
+    });
+}
+
+export async function register(username: string, password: string): Promise<{ message: string }> {
+    return request<{ message: string }>('/v1/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+    });
+}
+
+export async function forgotPassword(username: string): Promise<{ message: string }> {
+    return request<{ message: string }>('/v1/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ username }),
+    });
+}
+
+export async function getMe(): Promise<AuthUser> {
+    return request<AuthUser>('/v1/auth/me');
+}
+
+export async function logoutApi(): Promise<void> {
+    await request<{ message: string }>('/v1/auth/logout', { method: 'POST' });
+}
+
+// --- Admin (super_admin only) ------------------------------------------
+export interface AdminStats {
+    user_count: number;
+    pending_signups: number;
+    pending_resets: number;
+}
+
+export interface AdminUser {
+    id: string;
+    username: string;
+    role: UserRole;
+    status: string;
+    created_at?: string | null;
+    rejected_at?: string | null;
+}
+
+export interface AdminUserList {
+    total: number;
+    users: AdminUser[];
+}
+
+export interface PasswordResetItem {
+    id: string;
+    user_id: string;
+    username: string;
+    status: string;
+    requested_at?: string | null;
+}
+
+export interface ResolveResetResponse {
+    message: string;
+    username: string;
+    new_password: string;
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+    return request<AdminStats>('/v1/admin/stats');
+}
+
+export async function getAdminUsers(limit = 50, offset = 0, q?: string): Promise<AdminUserList> {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (q && q.trim()) params.set('q', q.trim());
+    return request<AdminUserList>(`/v1/admin/users?${params.toString()}`);
+}
+
+export async function getPendingSignups(): Promise<AdminUser[]> {
+    return request<AdminUser[]>('/v1/admin/pending-signups');
+}
+
+export async function getPasswordResets(): Promise<PasswordResetItem[]> {
+    return request<PasswordResetItem[]>('/v1/admin/password-resets');
+}
+
+export async function approveUser(id: string): Promise<AdminUser> {
+    return request<AdminUser>(`/v1/admin/users/${id}/approve`, { method: 'POST' });
+}
+
+export async function rejectUser(id: string): Promise<AdminUser> {
+    return request<AdminUser>(`/v1/admin/users/${id}/reject`, { method: 'POST' });
+}
+
+export async function disableUser(id: string): Promise<AdminUser> {
+    return request<AdminUser>(`/v1/admin/users/${id}/disable`, { method: 'POST' });
+}
+
+export async function enableUser(id: string): Promise<AdminUser> {
+    return request<AdminUser>(`/v1/admin/users/${id}/enable`, { method: 'POST' });
+}
+
+export async function deleteUser(id: string): Promise<void> {
+    await request<{ message: string }>(`/v1/admin/users/${id}`, { method: 'DELETE' });
+}
+
+export async function resolvePasswordReset(
+    requestId: string,
+    newPassword: string,
+): Promise<ResolveResetResponse> {
+    return request<ResolveResetResponse>(`/v1/admin/password-resets/${requestId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ new_password: newPassword }),
     });
 }
 
@@ -409,11 +523,8 @@ export async function uploadImport(file: File, accountId?: string): Promise<Impo
 
     const headers: Record<string, string> = {};
     try {
-        const stored = localStorage.getItem('finance_user');
-        if (stored) {
-            const u = JSON.parse(stored);
-            if (u.email) headers['X-User-Email'] = u.email;
-        }
+        const token = localStorage.getItem(AUTH_TOKEN_KEY);
+        if (token) headers['Authorization'] = `Bearer ${token}`;
     } catch (e) { }
 
     let res: Response;

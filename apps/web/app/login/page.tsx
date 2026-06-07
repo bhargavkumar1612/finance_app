@@ -1,26 +1,31 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/AuthContext';
 import styles from './page.module.css';
 
 export default function LoginPage() {
-    const [email, setEmail] = useState('');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const { login, isLoading } = useAuth();
+    const [submitting, setSubmitting] = useState(false);
+    const { login } = useAuth();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-        if (!email.includes('@')) {
-            setError('Please enter a valid email address');
+        if (!username.trim() || !password) {
+            setError('Enter your username and password');
             return;
         }
-
+        setSubmitting(true);
         try {
-            await login(email);
+            await login(username.trim(), password);
         } catch (err: any) {
             setError(err.message || 'Login failed');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -28,23 +33,47 @@ export default function LoginPage() {
         <div className={styles.container}>
             <div className={styles.loginBox}>
                 <h1>Welcome to Finance Copilot</h1>
-                <p>Login to view your chats and transactions</p>
+                <p>Log in to view your chats and transactions</p>
 
                 <form onSubmit={handleSubmit} className={styles.form}>
                     <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="user@example.com"
+                        id="login-username"
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        placeholder="Username"
+                        autoComplete="username"
                         required
-                        disabled={isLoading}
+                        disabled={submitting}
+                        className={styles.input}
+                    />
+                    <input
+                        id="login-password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Password"
+                        autoComplete="current-password"
+                        required
+                        disabled={submitting}
                         className={styles.input}
                     />
                     {error && <div className={styles.error}>{error}</div>}
-                    <button type="submit" disabled={isLoading} className="btn btn-primary" style={{ marginTop: '0.5rem' }}>
-                        {isLoading ? 'Logging in...' : 'Log In'}
+                    <button
+                        id="login-submit"
+                        type="submit"
+                        disabled={submitting}
+                        className="btn btn-primary"
+                        style={{ marginTop: '0.5rem' }}
+                    >
+                        {submitting ? 'Logging in...' : 'Log In'}
                     </button>
                 </form>
+
+                <div className={styles.links}>
+                    <Link href="/forgot-password">Forgot password?</Link>
+                    <Link href="/register">Create an account</Link>
+                </div>
             </div>
         </div>
     );

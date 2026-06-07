@@ -1,6 +1,6 @@
 'use client';
 
-import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { AuthProvider, PUBLIC_ROUTES, useAuth } from '@/lib/AuthContext';
 import { LayoutProvider, useLayout } from '@/lib/LayoutContext';
 import { ThemeProvider } from '@/lib/ThemeContext';
 import { useIsMobileLayout } from '@/lib/useIsMobileLayout';
@@ -36,7 +36,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
         return <div className={styles.loading}>Loading...</div>;
     }
 
-    if (pathname === '/login') {
+    if (PUBLIC_ROUTES.includes(pathname)) {
         return <>{children}</>;
     }
 

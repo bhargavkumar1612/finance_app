@@ -4,7 +4,7 @@ Owner priorities, mental model, and non-goals. Complements [DOMAIN_GLOSSARY.md](
 
 **Maintained by:** [domain-interview](../.cursor/skills/domain-interview/SKILL.md) sessions.
 
-**Onboarding status:** Rounds 1–7 complete; **Round 8 (2026-06-07)** — AI chat features (portfolio dashboard, SIP, obligations, persona).
+**Onboarding status:** Rounds 1–8 complete; **Round 9 (2026-06-07)** — auth, super admin, gated signup.
 
 ---
 
@@ -130,6 +130,25 @@ Explicitly **not** building:
 - **Round 6 (2026-06-06):** CC **initial credit used** + as-of date on add/edit; seed txn with `nw_impact=spending` (counts in spend reports).
 - **Round 7 (2026-06-07):** Look and feel — theme packs, Lucide icons, Settings page, density toggle.
 - **Round 8 (2026-06-07):** AI chat — portfolio dashboard, SIP status, obligations hub, persona; see [AI_CHAT_FEATURES_PRD.md](./AI_CHAT_FEATURES_PRD.md).
+- **Round 9 (2026-06-07):** Auth + super admin — username/password, approval queue, manual password reset; see [decisions/003-auth-super-admin.md](./decisions/003-auth-super-admin.md).
+
+---
+
+## Auth and access (Round 9 — owner confirmed)
+
+| Decision | Rule |
+|----------|------|
+| Login identifier | **Username** — any unique string (not required to be email) |
+| Register | Username + password → **`pending`** → cannot log in until approved |
+| Super admin bootstrap | One-time **setup script / migration** — first account only |
+| Admin UI | **`/admin`** in same web app — user count, pending signups, password resets |
+| Rejection | 24h cool-off on same username; super admin can **instantly override** and approve |
+| Disable vs delete | **Disable** = block login, keep data; **Hard delete** = user + all financial data gone |
+| Forgot password | User requests → super admin queue → super admin sets password, shares **offline** |
+| Session | Bearer token in **`localStorage`** — replace `X-User-Email` trust |
+| Out of scope v1 | Impersonation, automated email, OAuth, surgical per-txn admin edits |
+
+**ADR:** [003-auth-super-admin.md](./decisions/003-auth-super-admin.md)
 
 ---
 
@@ -177,3 +196,5 @@ Explicitly **not** building:
 | CC due_day on credit_card in API clear rules | Code drift — `_clear_incompatible_fields` clears due_day for non-loan today |
 | Persona LLM update frequency | After each chat session (Round 8); batch digest TBD |
 | CC “commitment” amount for affordability | Minimum vs full statement — use outstanding or user-set recurring when no min tracked |
+| Auth token TTL / rotation | ADR 003 defers — pick sensible default (e.g. 30d) at implementation |
+| Admin audit log | Deferred — super admin actions not logged in v1 |

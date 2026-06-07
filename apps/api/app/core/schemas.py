@@ -69,6 +69,21 @@ class PlannerOutput(BaseModel):
     steps: list[PlannerStep] = Field(default_factory=list)
     ui_mode: str = "guided_flow"
     message: Optional[str] = None
+    trace: Optional["AgentTrace"] = None
+
+
+class AgentTrace(BaseModel):
+    """Routing/debug metadata surfaced to chat UI (not a source of financial truth)."""
+    route: str  # keyword | semantic | llm_tool | llm_context | llm_message | fallback
+    intent: Optional[str] = None
+    tool: Optional[str] = None
+    semantic_match: Optional[str] = None
+    thinking: Optional[str] = None
+    model: Optional[str] = None
+    note: Optional[str] = None
+
+
+PlannerOutput.model_rebuild()
 
 
 # ----- Conversation state (Redis) -----

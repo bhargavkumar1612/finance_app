@@ -22,6 +22,7 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY}
       # Optional LLM (OpenRouter / Ollama) — planner + insight; set in .env
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
+      - LLM_PLANNER_MODE=${LLM_PLANNER_MODE:-auto}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-openai/gpt-4o-mini}
@@ -29,6 +30,9 @@ services:
       - OPENROUTER_X_TITLE=${OPENROUTER_X_TITLE:-Finance Copilot}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      # Super admin bootstrap (scripts.create_super_admin reads these when no argv)
+      - SUPER_ADMIN_USERNAME=${SUPER_ADMIN_USERNAME:-}
+      - SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy

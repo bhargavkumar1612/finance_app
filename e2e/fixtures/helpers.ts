@@ -1,16 +1,74 @@
 import { Locator, Page, expect } from '@playwright/test';
-import { uniqueEmail } from './data';
+import {
+  DEFAULT_PASSWORD,
+  SUPER_ADMIN_PASSWORD,
+  SUPER_ADMIN_USERNAME,
+  uniqueUsername,
+} from './data';
 
-/** Log in via UI (Enter submit avoids Next.js dev overlay blocking clicks). */
-export async function loginViaUi(page: Page, email?: string): Promise<string> {
-  const userEmail = email ?? uniqueEmail();
+/** Register a new (pending) account via the UI. */
+export async function registerViaUi(
+  page: Page,
+  username: string,
+  password = DEFAULT_PASSWORD,
+): Promise<void> {
+  await page.goto('/register');
+  await page.locator('#register-username').fill(username);
+  await page.locator('#register-password').fill(password);
+  await safeClick(page, page.locator('#register-submit'));
+  await expect(page.locator('#register-success')).toBeVisible();
+}
+
+/** Approve a pending user via the admin API (uses the bootstrapped super admin). */
+export async function approveUserViaApi(page: Page, username: string): Promise<void> {
+  const loginRes = await page.request.post('/v1/auth/login', {
+    data: { username: SUPER_ADMIN_USERNAME, password: SUPER_ADMIN_PASSWORD },
+  });
+  if (!loginRes.ok()) {
+    throw new Error(
+      `Super admin login failed (${loginRes.status()}). Run scripts.create_super_admin or global setup first.`,
+    );
+  }
+  const token = (await loginRes.json()).token as string;
+  const headers = { Authorization: `Bearer ${token}` };
+  const pendingRes = await page.request.get('/v1/admin/pending-signups', { headers });
+  const pending = (await pendingRes.json()) as Array<{ id: string; username: string }>;
+  const target = pending.find((u) => u.username === username);
+  if (!target) throw new Error(`Pending user "${username}" not found in admin queue`);
+  const approveRes = await page.request.post(`/v1/admin/users/${target.id}/approve`, { headers });
+  if (!approveRes.ok()) throw new Error(`Approve failed (${approveRes.status()})`);
+}
+
+/** Fill the login form and wait for the chat shell (Enter submit avoids overlay). */
+export async function loginWithCredentials(
+  page: Page,
+  username: string,
+  password = DEFAULT_PASSWORD,
+): Promise<void> {
   await page.goto('/login');
-  const input = page.getByPlaceholder('user@example.com');
-  await input.fill(userEmail);
-  await input.press('Enter');
+  await page.locator('#login-username').fill(username);
+  const pw = page.locator('#login-password');
+  await pw.fill(password);
+  await pw.press('Enter');
   await expect(page).toHaveURL(/\/chat/);
   await waitForChatReady(page);
-  return userEmail;
+}
+
+/** Log in the super admin (must be bootstrapped via scripts.create_super_admin). */
+export async function loginAsSuperAdmin(page: Page): Promise<void> {
+  await loginWithCredentials(page, SUPER_ADMIN_USERNAME, SUPER_ADMIN_PASSWORD);
+}
+
+/**
+ * End-to-end approved-user session: register -> super-admin approve -> login.
+ * Returns the username. Drop-in replacement for the legacy email-only login.
+ */
+export async function loginViaUi(page: Page, username?: string): Promise<string> {
+  const user = username ?? uniqueUsername();
+  await registerViaUi(page, user, DEFAULT_PASSWORD);
+  await approveUserViaApi(page, user);
+  await loginWithCredentials(page, user, DEFAULT_PASSWORD);
+  return user;
 }
 
 /** Chat shell is ready when input is visible (not stuck on Loading/build error). */
@@ -23,6 +81,19 @@ export async function sendChatMessage(page: Page, message: string): Promise<void
   const input = page.locator('#chat-input');
   await input.fill(message);
   await input.press('Enter');
+}
+
+/** Wait until a new assistant turn appears. */
+export async function waitForChatResponse(page: Page, timeout = 60_000): Promise<void> {
+  const turns = page.locator('[data-testid="chat-assistant-turn"]');
+  const before = await turns.count();
+  await expect.poll(async () => turns.count(), { timeout }).toBeGreaterThan(before);
+  await expect(turns.last()).toBeVisible();
+}
+
+/** Read clipboard after clicking copy — requires clipboard permissions in the test. */
+export async function copyChatTranscriptFromUi(page: Page): Promise<string> {
+  return page.evaluate(async () => navigator.clipboard.readText());
 }
 
 /** Prefer force click — Next.js dev overlay can intercept pointer events in dev mode. */

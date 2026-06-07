@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import accounts, assets, auth, chat, hints, import_api, liabilities, persona, recurring_bills, transactions
+from app.api import accounts, admin, assets, auth, chat, hints, import_api, liabilities, persona, recurring_bills, transactions
 from app.core.config import settings
 
 
@@ -37,6 +37,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/v1", tags=["auth"])
+app.include_router(admin.router, prefix="/v1", tags=["admin"])
 app.include_router(accounts.router, prefix="/v1", tags=["accounts"])
 app.include_router(assets.router, prefix="/v1", tags=["assets"])
 app.include_router(liabilities.router, prefix="/v1", tags=["liabilities"])

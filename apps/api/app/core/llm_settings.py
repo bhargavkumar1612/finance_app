@@ -16,6 +16,10 @@ class LLMSettings(BaseSettings):
     openrouter_x_title: str = "Finance Copilot"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
+    # auto: LLM for multi-turn / complex context; keywords for simple one-shot commands
+    # always: LLM routes every message when provider is enabled
+    # keywords_only: never call LLM planner (semantic + keywords only; LLM_PROVIDER=none behavior for routing)
+    llm_planner_mode: str = "auto"
 
 
 @lru_cache(maxsize=1)

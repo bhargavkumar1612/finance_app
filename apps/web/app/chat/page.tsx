@@ -1,7 +1,7 @@
 'use client';
 import { useRef, useEffect, useState } from 'react';
 import { useMachine } from '@xstate/react';
-import { Pencil, Send, Sparkles, Trash2, X } from 'lucide-react';
+import { Pencil, Send, Sparkles, Trash2, X, Copy, Check } from 'lucide-react';
 import { chatMachine, type ChatMessage } from '@/lib/chatMachine';
 import {
     sendChat,
@@ -15,7 +15,9 @@ import {
 import { useLayout } from '@/lib/LayoutContext';
 import { useIsMobileLayout } from '@/lib/useIsMobileLayout';
 import CardRenderer from '@/components/cards/CardRenderer';
+import AgentTracePanel, { type AgentTrace } from '@/components/chat/AgentTracePanel';
 import AppIcon from '@/components/icons/AppIcon';
+import { formatChatTranscript } from '@/lib/chatTranscript';
 import styles from './Chat.module.css';
 
 export default function ChatPage() {
@@ -30,6 +32,7 @@ export default function ChatPage() {
     const [sessionActionError, setSessionActionError] = useState<string | null>(null);
     const [sessionBusy, setSessionBusy] = useState(false);
     const [sessionsOpen, setSessionsOpen] = useState(false);
+    const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
     const scrollRef = useRef<HTMLDivElement>(null);
     const renameInputRef = useRef<HTMLInputElement>(null);
     const isMobile = useIsMobileLayout();
@@ -193,6 +196,23 @@ export default function ChatPage() {
 
     const isSending = state.matches('sending');
 
+    const handleCopyTranscript = async () => {
+        if (state.context.messages.length === 0) return;
+        const activeSession = sessions.find(s => s.id === activeSessionId);
+        const transcript = formatChatTranscript(state.context.messages, {
+            conversationId: state.context.conversationId,
+            title: activeSession?.title,
+        });
+        try {
+            await navigator.clipboard.writeText(transcript);
+            setCopyState('copied');
+            window.setTimeout(() => setCopyState('idle'), 2000);
+        } catch {
+            setCopyState('error');
+            window.setTimeout(() => setCopyState('idle'), 2500);
+        }
+    };
+
     const HINTS = [
         'add 500 for Swiggy',
         'what\'s my net worth?',
@@ -344,6 +364,20 @@ export default function ChatPage() {
                             <h1 className={styles.chatTitle}>Finance Copilot</h1>
                             <p className={styles.chatSubtitle}>Ask me to add expenses, check net worth, or analyse spending</p>
                         </div>
+                        {state.context.messages.length > 0 && (
+                            <button
+                                id="chat-copy-transcript"
+                                type="button"
+                                className={styles.copyChatBtn}
+                                onClick={() => void handleCopyTranscript()}
+                                disabled={isSending}
+                                title="Copy whole chat for sharing or debugging"
+                                aria-label="Copy whole chat"
+                            >
+                                <AppIcon icon={copyState === 'copied' ? Check : Copy} size={16} />
+                                {copyState === 'copied' ? 'Copied!' : copyState === 'error' ? 'Copy failed' : 'Copy chat'}
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -369,11 +403,16 @@ export default function ChatPage() {
                                 {msg.role === 'user' ? (
                                     <div className={styles.userBubble}>{msg.text}</div>
                                 ) : (
-                                    <div className={styles.assistantMessage}>
+                                    <div className={styles.assistantMessage} data-testid="chat-assistant-turn">
                                         <div className={styles.assistantAvatar}>
                                             <AppIcon icon={Sparkles} size={16} color="white" />
                                         </div>
                                         <div className={styles.assistantContent}>
+                                            {msg.agentResponse?.data?.agent_trace ? (
+                                                <AgentTracePanel
+                                                    trace={msg.agentResponse.data.agent_trace as AgentTrace}
+                                                />
+                                            ) : null}
                                             {msg.text && <p className={styles.messageText}>{msg.text}</p>}
                                             {msg.agentResponse && (
                                                 <CardRenderer

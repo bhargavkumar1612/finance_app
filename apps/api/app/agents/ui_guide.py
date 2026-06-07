@@ -114,6 +114,9 @@ def build_ui_guide(
             "total_commitments": last_result.get("total_commitments", 0),
             "monthly_income": last_result.get("monthly_income"),
             "surplus": last_result.get("surplus"),
+            "target_emi": last_result.get("target_emi"),
+            "can_afford_target": last_result.get("can_afford_target"),
+            "hypothetical_monthly_income": last_result.get("hypothetical_monthly_income"),
         }
         return "affordability_result", payload, chat_summary
 

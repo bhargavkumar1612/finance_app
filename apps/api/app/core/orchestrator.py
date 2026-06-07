@@ -67,6 +67,13 @@ _NEXT_ACTIONS = {
 }
 
 
+def _response_data(base: dict, planner_output: PlannerOutput | None = None) -> dict:
+    data = dict(base)
+    if planner_output and planner_output.trace:
+        data["agent_trace"] = planner_output.trace.model_dump(exclude_none=True)
+    return data
+
+
 async def _get_or_create_chat_session(session: AsyncSession, conversation_id: str, user_id: UUID, initial_message: str) -> UUID:
     try:
         session_uuid = UUID(conversation_id)
@@ -214,7 +221,7 @@ async def run(
             msg = f"Wait, {e.message}"
             res = AgentResponse(
                 status="error",
-                data={"message": msg, "error": e.message, "intent": planner_output.intent.value},
+                data=_response_data({"message": msg, "error": e.message, "intent": planner_output.intent.value}, planner_output),
                 confidence=0.0,
                 next_suggested_actions=_NEXT_ACTIONS.get(planner_output.intent, _NEXT_ACTIONS[Intent.unknown]),
                 ui_type="message_only",
@@ -226,7 +233,7 @@ async def run(
             msg = f"An unexpected error occurred: {str(e)}"
             res = AgentResponse(
                 status="error",
-                data={"message": msg, "error": str(e), "intent": planner_output.intent.value},
+                data=_response_data({"message": msg, "error": str(e), "intent": planner_output.intent.value}, planner_output),
                 confidence=0.0,
                 next_suggested_actions=_NEXT_ACTIONS[Intent.unknown],
                 ui_type="message_only",
@@ -257,7 +264,7 @@ async def run(
             card_payload = {**card_payload, "committed": False, "preview": True}
             res = AgentResponse(
                 status="confirm",
-                data={"message": last_result.get("summary", chat_summary), **last_result},
+                data=_response_data({"message": last_result.get("summary", chat_summary), **last_result}, planner_output),
                 confidence=1.0,
                 next_suggested_actions=["Confirm", "Cancel"],
                 ui_type=ui_type,
@@ -279,7 +286,7 @@ async def run(
             
         res = AgentResponse(
             status="success",
-            data={"message": chat_summary},
+            data=_response_data({"message": chat_summary}, planner_output),
             confidence=0.0,
             next_suggested_actions=_NEXT_ACTIONS[Intent.unknown],
             ui_type=ui_type,
@@ -293,7 +300,7 @@ async def run(
         ui_type, card_payload, chat_summary = build_ui_guide(Intent.import_statement, {"message": msg})
         res = AgentResponse(
             status="success",
-            data={"message": chat_summary},
+            data=_response_data({"message": chat_summary}, planner_output),
             confidence=1.0,
             next_suggested_actions=_NEXT_ACTIONS[Intent.import_statement],
             ui_type=ui_type,
@@ -304,7 +311,7 @@ async def run(
 
     # Call UI Guide to enrich response with ui_type, card_payload, chat_summary
     ui_type, card_payload, chat_summary = build_ui_guide(planner_output.intent, last_result)
-    response_data = {"message": chat_summary, **last_result}
+    response_data = _response_data({"message": chat_summary, **last_result}, planner_output)
     
     from app.services.missing_data import check_missing_data
     from app.core.suggested_actions import merge_suggested_actions
