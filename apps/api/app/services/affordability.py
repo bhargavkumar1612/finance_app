@@ -5,8 +5,9 @@ from uuid import UUID
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Account, Transaction
-from app.services.account_types import LOAN_TYPES
+from app.db.models import Transaction
+from app.services.commitments import monthly_commitments_breakdown
+from app.services.net_worth import compute_net_worth
 from app.services.spending import average_monthly_spending, income_filters
 
 
@@ -25,17 +26,16 @@ async def calculate_affordability(session: AsyncSession, user_id: UUID) -> dict:
 
     avg_monthly_spend = await average_monthly_spending(session, user_id, three_months_ago, today)
 
-    emi_q = select(func.sum(Account.emi_amount)).where(
-        Account.user_id == user_id,
-        Account.account_type.in_(tuple(LOAN_TYPES)),
-        Account.emi_amount.isnot(None),
-    )
-    emi_res = await session.execute(emi_q)
-    total_existing_emi = float(emi_res.scalar_one_or_none() or Decimal(0))
+    commitments = await monthly_commitments_breakdown(session, user_id)
+    total_commitments = commitments["total_commitments"]
+    loan_emis = commitments["loan_emis"]
 
     max_allowable_emi = avg_monthly_income * 0.50
-    safe_new_emi = max(0.0, max_allowable_emi - total_existing_emi)
-    surplus = avg_monthly_income - avg_monthly_spend - total_existing_emi
+    safe_new_emi = max(0.0, max_allowable_emi - total_commitments)
+    surplus = avg_monthly_income - avg_monthly_spend - total_commitments
+
+    nw_data = await compute_net_worth(session, user_id)
+    net_worth = float(nw_data.get("net_worth", 0))
 
     if avg_monthly_income == 0:
         risk_level = "unknown"
@@ -43,20 +43,32 @@ async def calculate_affordability(session: AsyncSession, user_id: UUID) -> dict:
     elif surplus < safe_new_emi:
         safe_new_emi = max(0.0, surplus)
         risk_level = "high"
-        message = f"Your spending is high. Safe new EMI: ₹{safe_new_emi:,.2f} based on surplus."
-    elif total_existing_emi > (avg_monthly_income * 0.40):
+        message = (
+            f"After spending and all commitments (₹{total_commitments:,.0f}/mo), "
+            f"safe new EMI: ₹{safe_new_emi:,.2f}."
+        )
+    elif total_commitments > (avg_monthly_income * 0.40):
         risk_level = "medium"
-        message = f"High existing debt. You can add EMI up to ₹{safe_new_emi:,.2f}."
+        message = (
+            f"Commitments use ₹{total_commitments:,.0f}/mo of income. "
+            f"You can add EMI up to ₹{safe_new_emi:,.2f}."
+        )
     else:
         risk_level = "low"
-        message = f"Finances look healthy. Comfortable EMI up to ₹{safe_new_emi:,.2f}."
+        message = (
+            f"Finances look healthy after ₹{total_commitments:,.0f}/mo commitments. "
+            f"Comfortable EMI up to ₹{safe_new_emi:,.2f}."
+        )
 
     return {
         "monthly_income": avg_monthly_income,
         "monthly_spend": avg_monthly_spend,
-        "existing_emi": total_existing_emi,
+        "existing_emi": loan_emis,
+        "commitments": commitments,
+        "total_commitments": total_commitments,
         "surplus": surplus,
         "safe_emi_estimate": safe_new_emi,
         "risk_level": risk_level,
+        "net_worth": net_worth,
         "message": message,
     }

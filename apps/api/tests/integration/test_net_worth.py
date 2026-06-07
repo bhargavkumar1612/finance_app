@@ -2,14 +2,19 @@
 import pytest
 from httpx import AsyncClient
 
+from .investment_fixtures import ensure_user, unique_user_email, user_headers
+
 pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio
 async def test_net_worth_after_bank_credit(client: AsyncClient) -> None:
+    email = unique_user_email("nw-cash")
+    await ensure_user(client, email)
     acc = await client.post(
         "/v1/accounts",
-        json={"account_type": "cash", "name": "Test Cash NW Unique", "institution": None},
+        json={"account_type": "cash", "name": "Test Cash NW", "institution": None},
+        headers=user_headers(email),
     )
     assert acc.status_code in (200, 201)
     account_id = acc.json()["id"]
@@ -22,22 +27,30 @@ async def test_net_worth_after_bank_credit(client: AsyncClient) -> None:
             "account_id": account_id,
             "merchant": "NEFT CR-SALARY-TEST",
             "category": "Income",
+            "nw_impact": "income",
         },
+        headers=user_headers(email),
     )
     assert txn.status_code in (200, 201)
 
-    r = await client.post("/v1/chat", json={"message": "what is my net worth?"})
+    r = await client.post(
+        "/v1/chat",
+        json={"message": "what is my net worth?"},
+        headers=user_headers(email),
+    )
     assert r.status_code == 200
     data = r.json()["response"]["data"]
     assert "net_worth" in data
     accounts = data.get("accounts", [])
-    test_cash = next((a for a in accounts if a.get("name") == "Test Cash NW Unique"), None)
+    test_cash = next((a for a in accounts if a.get("name") == "Test Cash NW"), None)
     assert test_cash is not None
     assert float(test_cash.get("balance", 0)) >= 100000
 
 
 @pytest.mark.asyncio
 async def test_net_worth_includes_opening_balance(client: AsyncClient) -> None:
+    email = unique_user_email("nw-ob")
+    await ensure_user(client, email)
     acc = await client.post(
         "/v1/accounts",
         json={
@@ -45,10 +58,15 @@ async def test_net_worth_includes_opening_balance(client: AsyncClient) -> None:
             "name": "NW Opening Bank",
             "opening_balance": 75000,
         },
+        headers=user_headers(email),
     )
     assert acc.status_code in (200, 201)
 
-    r = await client.post("/v1/chat", json={"message": "what is my net worth?"})
+    r = await client.post(
+        "/v1/chat",
+        json={"message": "what is my net worth?"},
+        headers=user_headers(email),
+    )
     assert r.status_code == 200
     data = r.json()["response"]["data"]
     assert float(data.get("net_worth", 0)) >= 75000
@@ -56,9 +74,12 @@ async def test_net_worth_includes_opening_balance(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_net_worth_includes_investment_holdings(client: AsyncClient) -> None:
+    email = unique_user_email("nw-mf")
+    await ensure_user(client, email)
     parent = await client.post(
         "/v1/accounts",
         json={"account_type": "bank", "name": "NW Investment Bank", "institution": "HDFC"},
+        headers=user_headers(email),
     )
     assert parent.status_code in (200, 201)
     parent_id = parent.json()["id"]
@@ -72,10 +93,15 @@ async def test_net_worth_includes_investment_holdings(client: AsyncClient) -> No
             "parent_account_id": parent_id,
             "opening_balance": 200000,
         },
+        headers=user_headers(email),
     )
     assert mf.status_code in (200, 201)
 
-    r = await client.post("/v1/chat", json={"message": "what is my net worth?"})
+    r = await client.post(
+        "/v1/chat",
+        json={"message": "what is my net worth?"},
+        headers=user_headers(email),
+    )
     assert r.status_code == 200
     data = r.json()["response"]["data"]
     assert float(data.get("investment_holdings", 0)) >= 200000

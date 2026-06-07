@@ -21,6 +21,8 @@ export default function AffordabilityCard({ payload }: Props) {
     const netWorth = payload.net_worth as number ?? 0;
     const monthlySpend = payload.monthly_spend as number ?? 0;
     const message = payload.message as string ?? '';
+    const totalCommitments = payload.total_commitments as number | undefined;
+    const commitments = payload.commitments as Record<string, number> | undefined;
     const meta = RISK_META[riskLevel] ?? RISK_META.unknown;
 
     return (
@@ -58,6 +60,29 @@ export default function AffordabilityCard({ payload }: Props) {
                     </span>
                 </div>
             </div>
+            {totalCommitments != null && totalCommitments > 0 && (
+                <div className={styles.affordStats} style={{ marginTop: 12 }}>
+                    <div className={styles.affordStat}>
+                        <span className={styles.affordStatLabel}>Monthly commitments</span>
+                        <span className={`${styles.affordStatValue} amount-liability`}>
+                            ₹{totalCommitments.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        </span>
+                    </div>
+                    {commitments && (
+                        <div className={styles.affordStat}>
+                            <span className={styles.affordStatLabel}>Breakdown</span>
+                            <span className={styles.affordStatValue} style={{ fontSize: '0.75rem' }}>
+                                {[
+                                    commitments.loan_emis ? `EMI ₹${commitments.loan_emis.toLocaleString('en-IN')}` : null,
+                                    commitments.sip_emis ? `SIP ₹${commitments.sip_emis.toLocaleString('en-IN')}` : null,
+                                    commitments.recurring_bills ? `Bills ₹${commitments.recurring_bills.toLocaleString('en-IN')}` : null,
+                                    commitments.cc_commitments ? `CC ₹${commitments.cc_commitments.toLocaleString('en-IN')}` : null,
+                                ].filter(Boolean).join(' · ')}
+                            </span>
+                        </div>
+                    )}
+                </div>
+            )}
             {message && <p className={styles.affordMessage}>{message}</p>}
         </div>
     );

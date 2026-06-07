@@ -101,15 +101,8 @@ def build_ui_guide(
         nw = last_result.get("net_worth", 0)
         spend = last_result.get("monthly_spend", 0)
         msg = last_result.get("message", "Affordability estimate ready.")
-        # Simple risk bucketing
-        if safe_emi == 0:
-            risk_level = "unknown"
-        elif safe_emi < 5000:
-            risk_level = "high"
-        elif safe_emi < 20000:
-            risk_level = "medium"
-        else:
-            risk_level = "low"
+        risk_level = last_result.get("risk_level", "unknown")
+        commitments = last_result.get("commitments", {})
         chat_summary = f"Safe EMI estimate: ₹{float(safe_emi):,.2f}/month (risk: {risk_level})."
         payload = {
             "safe_emi_estimate": float(safe_emi),
@@ -117,8 +110,56 @@ def build_ui_guide(
             "monthly_spend": float(spend),
             "risk_level": risk_level,
             "message": msg,
+            "commitments": commitments,
+            "total_commitments": last_result.get("total_commitments", 0),
+            "monthly_income": last_result.get("monthly_income"),
+            "surplus": last_result.get("surplus"),
         }
         return "affordability_result", payload, chat_summary
+
+    if intent == Intent.upcoming_obligations:
+        msg = last_result.get("message", "Upcoming obligations.")
+        return "obligation_list", last_result, msg
+
+    if intent == Intent.loan_emi_summary:
+        payload = {
+            **last_result,
+            "sections": {"loan_emis": last_result.get("loans", [])},
+        }
+        return "obligation_list", payload, last_result.get("message", "Loan EMI summary.")
+
+    if intent == Intent.record_transfer:
+        preview = last_result.get("preview", False)
+        summary = last_result.get("summary") or last_result.get("message", "Transfer.")
+        legs = last_result.get("legs", [])
+        payload = {
+            "legs": legs,
+            "amount": last_result.get("amount"),
+            "merchant": last_result.get("merchant"),
+            "transaction_date": last_result.get("transaction_date"),
+            "summary": summary,
+            "preview": preview,
+            "committed": not preview,
+            "created_id": last_result.get("created_id"),
+            "created_ids": last_result.get("created_ids"),
+        }
+        return "transaction_confirm", payload, summary
+
+    if intent == Intent.create_recurring_bill:
+        preview = last_result.get("preview", False)
+        summary = last_result.get("summary") or last_result.get("message", "Recurring bill.")
+        payload = {
+            "name": last_result.get("name"),
+            "amount": abs(float(last_result.get("amount", 0))),
+            "frequency": last_result.get("frequency", "monthly"),
+            "account_name": last_result.get("account_name"),
+            "due_day": last_result.get("due_day"),
+            "category": last_result.get("category"),
+            "preview": preview,
+            "committed": not preview,
+            "summary": summary,
+        }
+        return "recurring_bill_confirm", payload, summary
 
     if intent == Intent.manage_accounts:
         msg = last_result.get("message", "Account updated.")
@@ -139,7 +180,28 @@ def build_ui_guide(
             "message",
             "Use the Import tab to upload a CSV or PDF bank statement.",
         )
-        return "message_only", {"message": msg}, msg
+        return "import_guide", {
+            "message": msg,
+            "action_url": "/import",
+            "action_label": "Go to Import",
+            "supported_formats": ["CSV", "PDF"],
+        }, msg
+
+    if intent == Intent.explain_transaction:
+        msg = last_result.get("message", "Here are your transactions.")
+        return "transaction_detail", last_result, msg
+
+    if intent == Intent.recategorize_transaction:
+        if last_result.get("preview"):
+            return "transaction_confirm", last_result, last_result.get("summary", "Confirm recategorize?")
+        msg = last_result.get("message", "Transaction recategorized.")
+        return "transaction_confirm", {**last_result, "committed": True}, msg
+
+    if intent == Intent.create_account_guided:
+        if last_result.get("preview"):
+            return "account_create_confirm", last_result, last_result.get("summary", "Create account?")
+        msg = last_result.get("message", "Account created.")
+        return "account_create_confirm", {**last_result, "committed": True}, msg
 
     # Phase 4 AI Analytical Views
     if intent == Intent.analyze_category_spending:
@@ -168,7 +230,42 @@ def build_ui_guide(
         return "debt_payoff_plan", last_result, last_result.get("message", "Here is your debt payoff plan.")
 
     if intent == Intent.investment_allocation:
-        return "investment_pie_chart", last_result, last_result.get("message", "Here is your investment allocation.")
+        pie = [
+            {"name": k, "value": round(v * last_result.get("total_invested", 0) / 100, 2)}
+            for k, v in (last_result.get("allocation") or {}).items()
+        ] if last_result.get("total_invested") else last_result.get("pie_by_type", [])
+        payload = {**last_result, "pie_data": pie}
+        return "investment_pie_chart", payload, last_result.get("message", "Here is your investment allocation.")
+
+    if intent == Intent.portfolio_summary:
+        totals = last_result.get("totals", {})
+        current = totals.get("current", 0)
+        chat_summary = last_result.get(
+            "message",
+            f"Portfolio current value ₹{float(current):,.0f}.",
+        )
+        return "investment_portfolio_dashboard", last_result, chat_summary
+
+    if intent == Intent.portfolio_pnl_drilldown:
+        return "investment_pnl_bars", last_result, last_result.get(
+            "message", "P&L drill-down by % and ₹."
+        )
+
+    if intent == Intent.sip_status_query:
+        return "sip_schedule_summary", last_result, last_result.get(
+            "message", "SIP status for your mutual funds."
+        )
+
+    if intent == Intent.fd_maturity_query:
+        deposits = last_result.get("deposits", [])
+        msg = last_result.get("message", "No FD/RD accounts found.")
+        if deposits:
+            known = [d for d in deposits if d.get("maturity_date")]
+            if known:
+                lines = [f"{d['name']}: matures {d['maturity_date']}" for d in known]
+                msg = "\n".join(lines)
+                return "fd_maturity_summary", {"deposits": deposits, "message": msg}, msg
+        return "message_only", {"message": msg, "deposits": deposits}, msg
 
     if intent == Intent.vendor_spending_history:
         return "vendor_history", last_result, last_result.get("message", "Here is your spending history with this vendor.")

@@ -1,8 +1,14 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { CheckCircle2 } from 'lucide-react';
-import { uploadImport, confirmImport, type NormalizedRow } from '@/lib/api';
+import {
+    uploadImport,
+    confirmImport,
+    getRecurringSuggestions,
+    type NormalizedRow,
+    type RecurringBillSuggestion,
+} from '@/lib/api';
 import AppIcon from '@/components/icons/AppIcon';
 import styles from '@/app/import/Import.module.css';
 
@@ -22,6 +28,28 @@ export default function ImportStatement({ onClose, onImported, compact }: Import
     const [accountId, setAccountId] = useState('');
     const [result, setResult] = useState<{ inserted: number; errors: string[] } | null>(null);
     const [error, setError] = useState('');
+    const [billSuggestions, setBillSuggestions] = useState<RecurringBillSuggestion[]>([]);
+
+    useEffect(() => {
+        if (stage !== 'done' || !result || result.inserted <= 0) {
+            setBillSuggestions([]);
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await getRecurringSuggestions();
+                if (!cancelled && data.suggestions.length > 0) {
+                    setBillSuggestions(data.suggestions.slice(0, 3));
+                }
+            } catch {
+                /* suggestions are optional */
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [stage, result]);
 
     const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -263,6 +291,23 @@ export default function ImportStatement({ onClose, onImported, compact }: Import
                                     {e}
                                 </p>
                             ))}
+                        </div>
+                    )}
+                    {billSuggestions.length > 0 && (
+                        <div className={styles.doneHint} style={{ marginTop: 16, textAlign: 'left' }}>
+                            <strong>Recurring bill suggestions</strong>
+                            <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                                {billSuggestions.map((s) => (
+                                    <li key={s.bill_id}>
+                                        {s.name} — ₹{Math.abs(s.amount).toLocaleString('en-IN')} due{' '}
+                                        {s.suggested_date}
+                                    </li>
+                                ))}
+                            </ul>
+                            <p style={{ fontSize: '0.8rem', marginTop: 8 }}>
+                                Confirm from Accounts → Recurring bills, or ask chat: &quot;what&apos;s due this
+                                month?&quot;
+                            </p>
                         </div>
                     )}
                     <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'center', flexWrap: 'wrap' }}>

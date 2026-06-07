@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import Date, Numeric, Text, ForeignKey, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -24,6 +24,9 @@ class User(Base):
     assets: Mapped[list["Asset"]] = relationship(back_populates="user")
     chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")
     recurring_bills: Mapped[list["RecurringBill"]] = relationship(back_populates="user")
+    financial_persona: Mapped[Optional["UserFinancialPersona"]] = relationship(
+        back_populates="user", uselist=False
+    )
 
 
 class Account(Base):
@@ -141,6 +144,21 @@ class ImportFingerprint(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("user_id", "fingerprint", name="uq_import_fingerprints_user_fp"),)
+
+
+class UserFinancialPersona(Base):
+    """Per-user copilot profile — preferences and patterns, not financial truth."""
+
+    __tablename__ = "user_financial_personas"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True
+    )
+    body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    traits: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="financial_persona")
 
 
 class ChatSession(Base):

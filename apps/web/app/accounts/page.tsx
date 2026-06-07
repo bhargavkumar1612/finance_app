@@ -5,6 +5,7 @@ import {
     createAccount,
     deleteAccount,
     getAccounts,
+    getProactiveHints,
     updateAccount,
     type Account,
     type CreateAccountRequest,
@@ -90,12 +91,16 @@ export default function AccountsPage() {
     const [editing, setEditing] = useState<Account | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [proactiveHints, setProactiveHints] = useState<string[]>([]);
+    const [dismissedHints, setDismissedHints] = useState<Set<string>>(() => new Set());
 
     const load = useCallback(async () => {
         setError(null);
         setLoading(true);
         try {
-            setAccounts(await getAccounts());
+            const [accs, hintsResp] = await Promise.all([getAccounts(), getProactiveHints()]);
+            setAccounts(accs);
+            setProactiveHints(hintsResp.hints);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to load accounts');
         } finally {
@@ -117,6 +122,11 @@ export default function AccountsPage() {
     const liabilityTypeConfig = useMemo(
         () => ACCOUNT_TYPE_CONFIG.filter((t) => LIABILITY_ACCOUNT_TYPES.includes(t.value)),
         [],
+    );
+
+    const visibleHints = useMemo(
+        () => proactiveHints.filter((h) => !dismissedHints.has(h)),
+        [proactiveHints, dismissedHints],
     );
 
     const resetForm = () => {
@@ -477,6 +487,29 @@ export default function AccountsPage() {
                     What you own and what you owe — updated from transactions
                 </p>
             </div>
+
+            {visibleHints.length > 0 && (
+                <div className={styles.proactiveBanner} role="status" aria-live="polite">
+                    <p className={styles.proactiveTitle}>Suggested for you</p>
+                    <ul className={styles.proactiveList}>
+                        {visibleHints.map((hint) => (
+                            <li key={hint} className={styles.proactiveItem}>
+                                <span>{hint}</span>
+                                <button
+                                    type="button"
+                                    className={styles.proactiveDismiss}
+                                    aria-label={`Dismiss: ${hint}`}
+                                    onClick={() =>
+                                        setDismissedHints((prev) => new Set(prev).add(hint))
+                                    }
+                                >
+                                    Dismiss
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             {!loading && (
                 <div

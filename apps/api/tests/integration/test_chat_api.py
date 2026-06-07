@@ -53,6 +53,63 @@ async def test_chat_spending_analysis(client: AsyncClient) -> None:
     assert "data" in resp
 
 
+async def test_chat_portfolio_summary(client: AsyncClient) -> None:
+    r = await client.post(
+        "/v1/chat",
+        json={"message": "how are my investments?"},
+    )
+    assert r.status_code == 200
+    resp = r.json()["response"]
+    assert resp["status"] == "success"
+    assert resp["ui_type"] == "investment_portfolio_dashboard"
+    assert "card_payload" in resp
+    assert "totals" in resp["card_payload"]
+
+
+async def test_chat_investment_allocation(client: AsyncClient) -> None:
+    r = await client.post(
+        "/v1/chat",
+        json={"message": "show my investment allocation"},
+    )
+    assert r.status_code == 200
+    resp = r.json()["response"]
+    assert resp["status"] == "success"
+    assert resp["ui_type"] == "investment_pie_chart"
+
+
+async def test_chat_portfolio_pnl(client: AsyncClient) -> None:
+    r = await client.post(
+        "/v1/chat",
+        json={"message": "show my most profitable investments"},
+    )
+    assert r.status_code == 200
+    resp = r.json()["response"]
+    assert resp["status"] == "success"
+    assert resp["ui_type"] == "investment_pnl_bars"
+
+
+async def test_chat_sip_status(client: AsyncClient) -> None:
+    r = await client.post(
+        "/v1/chat",
+        json={"message": "did I pay my SIP this month?"},
+    )
+    assert r.status_code == 200
+    resp = r.json()["response"]
+    assert resp["status"] == "success"
+    assert resp["ui_type"] == "sip_schedule_summary"
+
+
+async def test_chat_fd_maturity(client: AsyncClient) -> None:
+    r = await client.post(
+        "/v1/chat",
+        json={"message": "when does my FD mature?"},
+    )
+    assert r.status_code == 200
+    resp = r.json()["response"]
+    assert resp["status"] == "success"
+    assert resp["ui_type"] in ("message_only", "fd_maturity_summary")
+
+
 async def test_chat_unknown_intent(client: AsyncClient) -> None:
     r = await client.post(
         "/v1/chat",

@@ -42,6 +42,20 @@ class Intent(str, Enum):
     vendor_spending_history = "vendor_spending_history"
     unusual_spending_alert = "unusual_spending_alert"
     manage_accounts = "manage_accounts"
+    # Slice 1 — Investment + SIP
+    portfolio_summary = "portfolio_summary"
+    portfolio_pnl_drilldown = "portfolio_pnl_drilldown"
+    sip_status_query = "sip_status_query"
+    fd_maturity_query = "fd_maturity_query"
+    # Slice 2 — Obligations hub
+    upcoming_obligations = "upcoming_obligations"
+    loan_emi_summary = "loan_emi_summary"
+    create_recurring_bill = "create_recurring_bill"
+    # Slice 3 — Capture
+    record_transfer = "record_transfer"
+    explain_transaction = "explain_transaction"
+    recategorize_transaction = "recategorize_transaction"
+    create_account_guided = "create_account_guided"
 
 
 class PlannerStep(BaseModel):
@@ -89,6 +103,18 @@ CardType = Literal[
     "vendor_history",
     "anomaly_alert",
     "account_list",
+    # Slice 1
+    "investment_portfolio_dashboard",
+    "investment_pnl_bars",
+    "sip_schedule_summary",
+    "fd_maturity_summary",
+    # Slice 2
+    "obligation_list",
+    "recurring_bill_confirm",
+    # Slice 3
+    "import_guide",
+    "transaction_detail",
+    "account_create_confirm",
 ]
 
 

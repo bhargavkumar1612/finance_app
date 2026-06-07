@@ -7,6 +7,7 @@ Guidance for humans and coding agents working in this repository.
 - **[docs/AI_PRINCIPLES.md](docs/AI_PRINCIPLES.md)** — architecture, schemas, finance safety, testing, MVP order
 - **[docs/DOMAIN_GLOSSARY.md](docs/DOMAIN_GLOSSARY.md)** — shared vocabulary (owner language ↔ code)
 - **[docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)** — priorities, mental model, open questions
+- **[docs/AI_CHAT_FEATURES_PRD.md](docs/AI_CHAT_FEATURES_PRD.md)** — AI chat roadmap (portfolio, SIP, obligations, persona) — Round 8 accepted
 - **[docs/LLM_SETUP.md](docs/LLM_SETUP.md)** — optional OpenRouter / Ollama configuration
 - **[docs/REGRESSION_TEST_PLAN.md](docs/REGRESSION_TEST_PLAN.md)** — A–Z regression scenarios for QA agents
 - **[README.md](README.md)** — run locally or with Docker
@@ -44,3 +45,4 @@ Deterministic orchestrator, typed `AgentResponse`, Ledger for facts and writes, 
 | Chat API | `apps/api/app/api/chat.py` |
 | Frontend state machine | `apps/web/lib/chatMachine.ts` |
 | E2E tests | `e2e/specs/` |
+| Cursor agent CLI | `~/Developer/learning/cursor-agent` — global `cursor-agent` via `CURSOR_API_KEY` |

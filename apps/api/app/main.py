@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import accounts, assets, auth, chat, import_api, liabilities, recurring_bills, transactions
+from app.api import accounts, assets, auth, chat, hints, import_api, liabilities, persona, recurring_bills, transactions
 from app.core.config import settings
 
 
@@ -44,6 +44,8 @@ app.include_router(transactions.router, prefix="/v1", tags=["transactions"])
 app.include_router(chat.router, prefix="/v1", tags=["chat"])
 app.include_router(import_api.router, prefix="/v1", tags=["import"])
 app.include_router(recurring_bills.router, prefix="/v1", tags=["recurring-bills"])
+app.include_router(hints.router, prefix="/v1", tags=["hints"])
+app.include_router(persona.router, prefix="/v1", tags=["persona"])
 
 
 @app.get("/health")

@@ -1,13 +1,19 @@
 # Test runner overlay — use: docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm api-test pytest ...
 services:
   api-test:
-    extends:
-      service: api
+    build:
+      context: ./apps/api
+    working_dir: /app/apps/api
+    environment:
+      - PYTHONPATH=/app/apps/api
+      - DATABASE_URL=postgresql://finances:finances_secret@db:5432/finances
+      - REDIS_URL=redis://redis:6379/0
+      - LLM_PROVIDER=none
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - .:/app
     command: pytest tests/ -q
-    profiles:
-      - test

@@ -4,7 +4,7 @@ Owner priorities, mental model, and non-goals. Complements [DOMAIN_GLOSSARY.md](
 
 **Maintained by:** [domain-interview](../.cursor/skills/domain-interview/SKILL.md) sessions.
 
-**Onboarding status:** Rounds 1–4 complete; Round 5 account fields interview 2026-06-06; Round 6 CC initial credit used 2026-06-06.
+**Onboarding status:** Rounds 1–7 complete; **Round 8 (2026-06-07)** — AI chat features (portfolio dashboard, SIP, obligations, persona).
 
 ---
 
@@ -40,7 +40,8 @@ All three pillars are **heavily used** and must be **high quality** — no "good
 | **Phase 2 (in progress)** | Liquid investment account types (MF, FD, RD, stock) — see [INVESTMENT_ACCOUNTS_PLAN.md](./INVESTMENT_ACCOUNTS_PLAN.md) |
 | **Phase 2.1 (done)** | Round 5 drift closure — Holdings label, FD card, loan start, CC due day, cash UI |
 | **Phase 2.2 (done)** | Investment reference IDs — `folio_number`, `demat_id` |
-| **Phase 2.3 (deferred)** | CC due_day → RecurringBill link; physical Asset UI; legacy `/v1/assets` migration |
+| **Phase 2.3 (done)** | MF one-time vs SIP; invested/current/P&L |
+| **Phase 3 — AI chat (next)** | [AI_CHAT_FEATURES_PRD.md](./AI_CHAT_FEATURES_PRD.md) — Slice 1 investment/SIP chat first |
 | **Later** | YNAB-style envelope budgeting (assign income to categories; spend from envelopes) |
 
 ---
@@ -49,11 +50,32 @@ All three pillars are **heavily used** and must be **high quality** — no "good
 
 | Item | Status | Notes |
 |------|--------|-------|
-| CC `due_day` → RecurringBill reminder | Deferred | Save due_day now (Phase 2.1); manual recurring bill or chat CTA later |
-| Physical Asset UI | Deferred | `Asset` table CRUD for property, gold, etc. |
-| Legacy `/v1/assets` migration | Deferred | Move mf/stock rows to Account types |
-| FD maturity value projection | Deferred | Needs domain formula interview |
+| CC `due_day` → RecurringBill reminder | Deferred | Obligations hub in chat shows due_day; auto RecurringBill link later |
+| Physical Asset UI | Deferred | `Asset` table CRUD for property, gold, etc.; included in portfolio dashboard when rows exist |
+| Legacy `/v1/assets` migration | Deferred | Move mf/stock rows to Account types; chat allocation must use Account holdings |
+| FD maturity value projection | Deferred | Maturity **date** in chat; projected value formula TBD |
 | Chit fund modeling | Deferred | Phase 2 interview |
+
+---
+
+## AI copilot chat (Round 8 — owner confirmed)
+
+**PRD:** [AI_CHAT_FEATURES_PRD.md](./AI_CHAT_FEATURES_PRD.md)
+
+**Implementation order:** Slice 1 (investment/SIP chat) → Slice 2 (obligations hub) → Slice 3 (capture/import). **Financial persona** spans Slices 1–2 (footer suggestions, nudge copy, drill-down filtering).
+
+| Decision | Rule |
+|----------|------|
+| Portfolio scope | Cash (bank/wallet) + Account holdings + physical `Asset` rows |
+| Portfolio UX | Primary visual dashboard + persona-filtered drill-downs; footer suggestions for gaps |
+| Rankings | Liquidity stack (glossary); valuable by **current value**; profitable by **P&L % and ₹** |
+| Advice | Facts only + NW-increasing suggestions; **no** buy/sell picks |
+| SIP status | Last paid, next expected, or **Already paid in {Month}** |
+| Record SIP | **Dual-leg** bank debit + MF credit in one confirm |
+| Affordability | Subtract **all** commitments (loans, SIPs, recurring bills, CC) |
+| Obligations | **One card**, grouped sections (SIP / EMI / bills / CC) |
+| Proactive nudges | Chat + Accounts; persona-aware copy |
+| Persona | DB-stored; rules + LLM after session; user editable in Settings — [002-financial-persona.md](./decisions/002-financial-persona.md) |
 
 ---
 
@@ -107,6 +129,7 @@ Explicitly **not** building:
 - **Round 5 (2026-06-06):** Account field model — see glossary entries for holdings label, FD/RD card, loan start date, CC due day, folio/demat, cash UI.
 - **Round 6 (2026-06-06):** CC **initial credit used** + as-of date on add/edit; seed txn with `nw_impact=spending` (counts in spend reports).
 - **Round 7 (2026-06-07):** Look and feel — theme packs, Lucide icons, Settings page, density toggle.
+- **Round 8 (2026-06-07):** AI chat — portfolio dashboard, SIP status, obligations hub, persona; see [AI_CHAT_FEATURES_PRD.md](./AI_CHAT_FEATURES_PRD.md).
 
 ---
 
@@ -132,7 +155,7 @@ Explicitly **not** building:
 
 | Decision | Rule |
 |----------|------|
-| Investment card label | **Holdings ₹X** (not Balance) |
+| Investment card label | **Invested / Current / P&L** (not Balance; deprecated: “Holdings ₹X”) |
 | FD/RD card | Show start, tenure, rate + **computed maturity date** |
 | Loan start date | **Required** when EMI + tenure are set |
 | CC due day | Save on Account; link to recurring-bill reminders later |
@@ -150,5 +173,7 @@ Explicitly **not** building:
 |-------|--------|
 | Variable EMI / amortization from interest rate | Phase 1 uses user-entered `emi_amount`; calculator deferred |
 | Bank EMI import → auto-mirror to loan account | Manual loan-account txn for now; `linked_account_id` on Transaction TBD |
-| CC due day → recurring bill auto-link | Round 5 — save due_day now; auto recurring bill deferred |
+| CC due day → recurring bill auto-link | Obligations hub shows due_day; auto RecurringBill deferred |
 | CC due_day on credit_card in API clear rules | Code drift — `_clear_incompatible_fields` clears due_day for non-loan today |
+| Persona LLM update frequency | After each chat session (Round 8); batch digest TBD |
+| CC “commitment” amount for affordability | Minimum vs full statement — use outstanding or user-set recurring when no min tracked |

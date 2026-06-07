@@ -18,6 +18,16 @@ import SpendingDashboardCard from './SpendingDashboardCard';
 import VendorHistoryCard from './VendorHistoryCard';
 import AnomalyAlertCard from './AnomalyAlertCard';
 import AccountListCard from './AccountListCard';
+import InvestmentPortfolioDashboardCard from './InvestmentPortfolioDashboardCard';
+import InvestmentPnlBarsCard from './InvestmentPnlBarsCard';
+import SipScheduleSummaryCard from './SipScheduleSummaryCard';
+import FdMaturityCard from './FdMaturityCard';
+import ObligationListCard from './ObligationListCard';
+import RecurringBillConfirmCard from './RecurringBillConfirmCard';
+// Slice 3
+import ImportGuideCard from './ImportGuideCard';
+import TransactionDetailCard from './TransactionDetailCard';
+import AccountCreateConfirmCard from './AccountCreateConfirmCard';
 
 // Dynamic card registry: maps ui_type → React component
 const REGISTRY: Record<string, React.ComponentType<{ payload: Record<string, unknown>; onAccept?: () => void; onReject?: () => void }>> = {
@@ -41,6 +51,16 @@ const REGISTRY: Record<string, React.ComponentType<{ payload: Record<string, unk
     vendor_history: VendorHistoryCard,
     anomaly_alert: AnomalyAlertCard,
     account_list: AccountListCard,
+    investment_portfolio_dashboard: InvestmentPortfolioDashboardCard,
+    investment_pnl_bars: InvestmentPnlBarsCard,
+    sip_schedule_summary: SipScheduleSummaryCard,
+    fd_maturity_summary: FdMaturityCard,
+    obligation_list: ObligationListCard,
+    recurring_bill_confirm: RecurringBillConfirmCard,
+    // Slice 3
+    import_guide: ImportGuideCard,
+    transaction_detail: TransactionDetailCard,
+    account_create_confirm: AccountCreateConfirmCard,
 };
 
 interface CardProps {

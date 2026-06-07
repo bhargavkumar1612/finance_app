@@ -118,8 +118,28 @@ Applies to **expense** and **income** mutations only.
 | **REG-D009** | `budget vs actual` | `message_only` or coming-soon (YNAB stub) |
 | **REG-D010** | Category / cash flow / top expenses / vendor / anomaly phrases | Matching card type; **no 500** even with sparse data |
 | **REG-D011** | `debt payoff` / `investment allocation` / `future balance` | Respective card; graceful empty state |
+| **REG-D012** | `how are my investments?` | `investment_portfolio_dashboard` (smoke: `e2e/specs/smoke/chat-investments.spec.ts`) |
+| **REG-D013** | `show my investment allocation` | `investment_pie_chart` |
+| **REG-D014** | `did I pay my SIP this month?` | `sip_schedule_summary` |
+| **REG-D015** | `when does my FD mature?` | `fd_maturity_summary` when FD/RD seeded; else `message_only` |
+| **REG-D016** | `what's due this month?` | `obligation_list`; 4 sections; `total_monthly_commitments` > 0 |
+| **REG-D017** | `loan emi summary` | `obligation_list`; `total_monthly_emi` reflects seeded loan |
+| **REG-D018** | `can I afford a new loan?` | `affordability_result`; `commitments` breakdown with `loan_emis` and `sip_emis` |
+| **REG-D019** | `add recurring bill Netflix 499` | `status=confirm`, `ui_type=recurring_bill_confirm`, `card_payload.name=Netflix` |
+| **REG-D020** | Confirm the recurring bill | `status=success`, `committed=true`; bill appears in `GET /v1/recurring-bills` |
+| **REG-D021** | `GET /v1/persona` first time | 200, `body=""`, no error |
+| **REG-D022** | `PUT /v1/persona` then `GET` | Body persists; Settings editor shows saved text after reload |
+| **REG-D023** | `record SIP 5000` → confirm | `status=confirm`, `transaction_confirm`, `legs` length 2; both txns in DB; SIP paid this month |
 
-**LLM off (`LLM_PROVIDER=none`):** REG-D001–D011 must still route via keywords/semantic fallback.
+**E2E regression (Slice 1 chat + accounts setup):** `e2e/specs/regression/chat-investments.spec.ts` — **REG-C010** portfolio dashboard after MF, **REG-C011** SIP status, **REG-C012** allocation pie.
+
+**E2E regression (Slice 2 obligations hub):** `e2e/specs/regression/chat-obligations.spec.ts` — **REG-C020** obligations card with SIP + loan, **REG-C021** recurring bill confirm flow, **REG-C022** persona settings round-trip.
+
+**E2E regression (Slice 3 transfer):** `e2e/specs/regression/chat-transfer.spec.ts` — **REG-C030** dual-leg SIP transfer confirm.
+
+**E2E regression (Slice 3.2–3.4):** `e2e/specs/regression/chat-slice3-ext.spec.ts` — **REG-C031** import guide, **REG-C032** explain transaction, **REG-C033** recategorize confirm, **REG-C034** create SIP account guided.
+
+**LLM off (`LLM_PROVIDER=none`):** REG-D001–D022 must still route via keywords/semantic fallback (`test_planner_llm_none.py`).
 
 ---
 
@@ -547,6 +567,31 @@ For each `ui_type` in `CardRenderer.tsx`, trigger once and confirm **no React er
 | `e2e/specs/regression/settings-look-and-feel.spec.ts` | REG-S007–S012, REG-ML008 |
 | `apps/web/tests/unit/mobileAccessUrl.test.ts` | LAN URL normalization (unit) |
 | `apps/web/tests/integration/MobileAccessQr.test.tsx` | QR render, copy link, localhost manual URL |
+| `test_chat_slice1.py` | REG-D012–D015, Slice 1 investment/SIP intents end-to-end |
+| `test_planner_slice1.py` | Slice 1 keyword routing unit |
+| `test_portfolio_summary.py` | Portfolio math, persona rules, footer suggestions |
+| `test_chat_slice2.py` | REG-D016–D020 core paths |
+| `test_planner_slice2.py` | Slice 2 keyword routing unit |
+| `test_obligations_service.py` | `_bill_next_due` pure function, weekly formula |
+| `test_planner_llm_none.py` | REG-D012–D015, REG-D016–D019 with `LLM_PROVIDER=none` |
+| `test_persona_api.py` | REG-D021–D022 persona round-trip |
+| `apps/web/tests/integration/InvestmentCards.test.tsx` | Slice 1 card components |
+| `apps/web/tests/integration/ObligationCards.test.tsx` | ObligationListCard, RecurringBillConfirmCard |
+| `apps/web/tests/integration/AffordabilityCardSlice2.test.tsx` | AffordabilityCard commitments section |
+| `apps/web/tests/integration/SettingsPage.test.tsx` | FinancialPersonaEditor render, save, dirty state |
+| `e2e/specs/regression/chat-investments.spec.ts` | REG-C010–C012 Slice 1 chat UI |
+| `e2e/specs/regression/chat-obligations.spec.ts` | REG-C020–C022 Slice 2 chat UI |
+| `test_chat_slice3.py` | REG-D023 record_transfer dual-leg confirm |
+| `test_planner_slice3.py` | Slice 3 keyword routing unit |
+| `test_transfer_propose.py` | Transfer validation unit |
+| `test_persona_hook.py` | S2.6 post-session persona hook unit |
+| `apps/web/tests/integration/TransactionConfirmCard.test.tsx` | Dual-leg transfer card render |
+| `e2e/specs/regression/chat-transfer.spec.ts` | REG-C030 Slice 3 chat UI |
+| `e2e/specs/regression/chat-slice3-ext.spec.ts` | REG-C031–C034 Slice 3.2–3.4 chat UI |
+| `apps/api/tests/integration/test_chat_slice3_ext.py` | S3.2–3.4 backend integration |
+| `apps/api/tests/integration/test_planner_llm_none.py` | Slice 3 LLM=none routing |
+| `apps/api/tests/unit/test_planner_slice3.py` | S3 planner keyword detectors |
+| `apps/web/tests/integration/Slice3Cards.test.tsx` | ImportGuideCard, TransactionDetailCard, AccountCreateConfirmCard Vitest |
 
 **No automated tests yet:** REG-N*, REG-O*, REG-P*, REG-F010–F015, REG-C003–C009, REG-H*, REG-W*, some REG-F033–F036 UI-only.
 

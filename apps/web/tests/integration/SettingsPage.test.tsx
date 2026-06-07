@@ -142,3 +142,72 @@ describe('SettingsPage', () => {
         });
     });
 });
+
+describe('SettingsPage — FinancialPersonaEditor', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        localStorage.clear();
+    });
+
+    function stubPersonaFetch(body = '') {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+                if (url.includes('/v1/persona') && (!init || init.method === 'GET' || !init.method)) {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        text: async () => JSON.stringify({ body, traits: {}, updated_at: null }),
+                    });
+                }
+                if (url.includes('/v1/persona') && init?.method === 'PUT') {
+                    const sent = JSON.parse(init.body as string);
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        text: async () => JSON.stringify({ body: sent.body, traits: {}, updated_at: '2026-06-07T00:00:00' }),
+                    });
+                }
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    text: async () => JSON.stringify({ url: null }),
+                });
+            }),
+        );
+    }
+
+    it('renders Financial persona section with textarea', async () => {
+        stubPersonaFetch('');
+        renderWithTheme(<SettingsPage />);
+        expect(await screen.findByRole('heading', { name: 'Financial persona' })).toBeInTheDocument();
+        expect(screen.getByRole('textbox', { name: /Financial persona notes/i })).toBeInTheDocument();
+    });
+
+    it('Save persona button is disabled when body is unchanged', async () => {
+        stubPersonaFetch('');
+        renderWithTheme(<SettingsPage />);
+        await screen.findByRole('heading', { name: 'Financial persona' });
+        const btn = screen.getByRole('button', { name: /Save persona/i });
+        expect(btn).toBeDisabled();
+    });
+
+    it('Save persona button enables after typing and shows success on save', async () => {
+        stubPersonaFetch('');
+        const user = userEvent.setup();
+        renderWithTheme(<SettingsPage />);
+        await screen.findByRole('heading', { name: 'Financial persona' });
+
+        const textarea = screen.getByRole('textbox', { name: /Financial persona notes/i });
+        await user.type(textarea, 'SIP-heavy investor');
+
+        const btn = screen.getByRole('button', { name: /Save persona/i });
+        expect(btn).not.toBeDisabled();
+
+        await user.click(btn);
+
+        await waitFor(() => {
+            expect(screen.getByText('Persona saved.')).toBeInTheDocument();
+        });
+    });
+});

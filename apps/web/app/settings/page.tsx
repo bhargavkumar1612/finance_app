@@ -12,6 +12,7 @@ import {
 } from '@/lib/themes/fonts';
 import { THEME_PACKS, type DensityId, type ThemePackId } from '@/lib/themes/packs';
 import MobileAccessQr from '@/components/settings/MobileAccessQr';
+import FinancialPersonaEditor from '@/components/settings/FinancialPersonaEditor';
 import styles from './Settings.module.css';
 
 const DENSITY_OPTIONS = [
@@ -163,6 +164,8 @@ export default function SettingsPage() {
                     ))}
                 </div>
             </section>
+
+            <FinancialPersonaEditor />
 
             <section className={styles.section}>
                 <h2 className={styles.sectionTitle}>Open on phone</h2>

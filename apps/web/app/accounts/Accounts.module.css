@@ -24,6 +24,54 @@
     color: var(--text-muted);
 }
 
+.proactiveBanner {
+    margin-bottom: 20px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface-elevated, var(--surface));
+}
+
+.proactiveTitle {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0 0 8px;
+}
+
+.proactiveList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.proactiveItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+
+.proactiveDismiss {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+}
+
+.proactiveDismiss:hover {
+    color: var(--text-primary);
+}
+
 .fieldHint {
     margin-top: 4px;
     font-size: 0.75rem;

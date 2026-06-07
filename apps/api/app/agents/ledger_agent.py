@@ -17,6 +17,7 @@ from app.services.account_types import (
     ACCOUNT_TYPES,
     BANK_DETAIL_TYPES,
     DERIVED_TYPES,
+    HOLDINGS_TYPES,
     INVESTMENT_TYPES,
     LIMIT_ACCOUNT_TYPES,
     LOAN_DETAIL_TYPES,
@@ -27,6 +28,7 @@ from app.services.account_types import (
     PRIMARY_TYPES,
     SANCTIONED_ACCOUNT_TYPES,
 )
+from app.services.mf_investment_mode import is_sip_account
 from app.services.bank_account_details import (
     apply_bank_fields,
     clear_bank_fields,
@@ -96,12 +98,42 @@ async def run(
         return await _debt_payoff_planner(session, user_id, params)
     if action == "investment_allocation":
         return await _investment_allocation(session, user_id, params)
+    if action == "portfolio_summary":
+        return await _portfolio_summary(session, user_id)
+    if action == "portfolio_pnl_drilldown":
+        return await _portfolio_pnl_drilldown(session, user_id)
+    if action == "sip_status_query":
+        return await _sip_status_query(session, user_id)
+    if action == "fd_maturity_query":
+        return await _fd_maturity_query(session, user_id)
+    if action == "upcoming_obligations":
+        return await _upcoming_obligations(session, user_id)
+    if action == "loan_emi_summary":
+        return await _loan_emi_summary(session, user_id)
+    if action == "propose_recurring_bill":
+        return await _propose_recurring_bill(session, user_id, params, default_account_id)
+    if action == "insert_recurring_bill":
+        return await _insert_recurring_bill(session, user_id, params, default_account_id)
+    if action == "propose_transfer":
+        return await _propose_transfer(session, user_id, params, default_account_id)
+    if action == "insert_transfer":
+        return await _insert_transfer(session, user_id, params, default_account_id)
     if action == "vendor_spending_history":
         return await _vendor_spending_history(session, user_id, params)
     if action == "unusual_spending_alert":
         return await _unusual_spending_alert(session, user_id, params)
     if action == "create_account":
         return await _create_account(session, user_id, params)
+    if action == "propose_account":
+        return await _propose_account(session, user_id, params)
+    if action == "insert_account":
+        return await _create_account(session, user_id, params)
+    if action == "explain_transaction":
+        return await _explain_transaction(session, user_id, params)
+    if action == "propose_recategorize":
+        return await _propose_recategorize(session, user_id, params)
+    if action == "insert_recategorize":
+        return await _insert_recategorize(session, user_id, params)
     if action == "list_accounts":
         return await _list_accounts(session, user_id)
     if action == "update_account":
@@ -577,18 +609,332 @@ async def _debt_payoff_planner(session: AsyncSession, user_id: UUID, params: dic
 
 
 async def _investment_allocation(session: AsyncSession, user_id: UUID, params: dict) -> dict:
-    ar = await session.execute(select(Asset).where(Asset.user_id == user_id))
-    assets = list(ar.scalars().all())
-    total = sum(float(a.current_value) for a in assets)
-    allocation: dict[str, float] = {}
-    for a in assets:
-        label = (a.asset_type or "other").replace("_", " ").title()
-        pct = (float(a.current_value) / total * 100) if total else 0
-        allocation[label] = round(allocation.get(label, 0) + pct, 1)
+    from app.services.portfolio_summary import compute_investment_allocation
+    return await compute_investment_allocation(session, user_id)
+
+
+async def _portfolio_summary(session: AsyncSession, user_id: UUID) -> dict:
+    from app.services.portfolio_summary import compute_portfolio_summary
+    return await compute_portfolio_summary(session, user_id)
+
+
+async def _portfolio_pnl_drilldown(session: AsyncSession, user_id: UUID) -> dict:
+    from app.services.portfolio_summary import compute_pnl_drilldown
+    return await compute_pnl_drilldown(session, user_id)
+
+
+async def _sip_status_query(session: AsyncSession, user_id: UUID) -> dict:
+    from app.services.portfolio_summary import compute_sip_status
+    return await compute_sip_status(session, user_id)
+
+
+async def _fd_maturity_query(session: AsyncSession, user_id: UUID) -> dict:
+    from app.services.portfolio_summary import compute_fd_maturity
+    return await compute_fd_maturity(session, user_id)
+
+
+async def _upcoming_obligations(session: AsyncSession, user_id: UUID) -> dict:
+    from app.services.obligations import compute_upcoming_obligations
+    return await compute_upcoming_obligations(session, user_id)
+
+
+async def _loan_emi_summary(session: AsyncSession, user_id: UUID) -> dict:
+    from app.services.obligations import compute_loan_emi_summary
+    return await compute_loan_emi_summary(session, user_id)
+
+
+async def _resolve_investment_account(
+    session: AsyncSession,
+    user_id: UUID,
+    params: dict,
+) -> Account:
+    account_id = (
+        params.get("to_account_id")
+        or params.get("investment_account_id")
+        or params.get("account_id")
+    )
+    if account_id is not None:
+        try:
+            account_id = UUID(account_id) if isinstance(account_id, str) else account_id
+        except Exception:
+            account_id = None
+    if account_id is not None:
+        result = await session.execute(
+            select(Account).where(
+                Account.id == account_id,
+                Account.user_id == user_id,
+                Account.account_type.in_(tuple(HOLDINGS_TYPES)),
+            )
+        )
+        account = result.scalar_one_or_none()
+        if account:
+            return account
+        raise LedgerError("Investment account not found or not yours.")
+
+    result = await session.execute(
+        select(Account).where(
+            Account.user_id == user_id,
+            Account.account_type.in_(tuple(HOLDINGS_TYPES)),
+        )
+    )
+    accounts = list(result.scalars().all())
+    if not accounts:
+        raise LedgerError("No investment account found. Create a mutual fund or SIP account first.")
+
+    name_hint = (
+        params.get("investment_name")
+        or params.get("mf_name")
+        or params.get("account_name")
+        or ""
+    ).strip()
+    if name_hint:
+        lower = name_hint.lower()
+        matches = [a for a in accounts if lower in (a.name or "").lower()]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            names = ", ".join(a.name for a in matches)
+            raise LedgerError(f"Multiple accounts match '{name_hint}': {names}. Be more specific.")
+
+    sip_accounts = [a for a in accounts if is_sip_account(a)]
+    if len(sip_accounts) == 1:
+        return sip_accounts[0]
+    if len(accounts) == 1:
+        return accounts[0]
+    names = ", ".join(a.name for a in accounts)
+    raise LedgerError(f"Which investment account? You have: {names}")
+
+
+async def _resolve_parent_bank(
+    session: AsyncSession,
+    user_id: UUID,
+    investment_account: Account,
+) -> Account:
+    if not investment_account.parent_account_id:
+        raise LedgerError(
+            f"{investment_account.name} has no linked bank account. "
+            "Link a parent bank account before recording a transfer."
+        )
+    result = await session.execute(
+        select(Account).where(
+            Account.id == investment_account.parent_account_id,
+            Account.user_id == user_id,
+        )
+    )
+    parent = result.scalar_one_or_none()
+    if not parent:
+        raise LedgerError("Linked parent bank account not found.")
+    if parent.account_type not in PRIMARY_TYPES:
+        raise LedgerError("Parent account must be a bank or cash account.")
+    return parent
+
+
+async def _propose_transfer(
+    session: AsyncSession,
+    user_id: UUID,
+    params: dict,
+    default_account_id: UUID | None,
+) -> dict:
+    amount = params.get("amount")
+    if amount is None:
+        raise LedgerError("Amount is required. Say e.g. 'record SIP 5000 for HDFC MF'.")
+    try:
+        amount_decimal = abs(Decimal(str(amount)))
+    except Exception:
+        raise LedgerError("Invalid amount.")
+    if amount_decimal <= 0:
+        raise LedgerError("Amount must be greater than zero.")
+
+    investment = await _resolve_investment_account(session, user_id, params)
+    parent = await _resolve_parent_bank(session, user_id, investment)
+    transaction_date = _parse_date(params.get("transaction_date")) or date.today()
+    merchant = f"SIP — {investment.name}"
+
+    legs = [
+        {
+            "account_id": str(parent.id),
+            "account_name": parent.name,
+            "amount": float(-amount_decimal),
+            "nw_impact": NwImpact.transfer.value,
+            "merchant": merchant,
+            "category": "Investments",
+            "transaction_date": transaction_date.isoformat(),
+        },
+        {
+            "account_id": str(investment.id),
+            "account_name": investment.name,
+            "amount": float(amount_decimal),
+            "nw_impact": NwImpact.transfer.value,
+            "merchant": merchant,
+            "category": "Investments",
+            "transaction_date": transaction_date.isoformat(),
+        },
+    ]
+    summary = (
+        f"Record SIP transfer ₹{amount_decimal:,.0f} from {parent.name} "
+        f"to {investment.name} on {transaction_date}?"
+    )
     return {
-        "total_invested": total,
-        "allocation": allocation,
-        "message": "Portfolio allocation from recorded assets." if assets else "Add assets to see allocation.",
+        "preview": True,
+        "summary": summary,
+        "legs": legs,
+        "amount": float(amount_decimal),
+        "from_account_id": str(parent.id),
+        "to_account_id": str(investment.id),
+        "transaction_date": transaction_date.isoformat(),
+        "merchant": merchant,
+    }
+
+
+async def _insert_transfer(
+    session: AsyncSession,
+    user_id: UUID,
+    params: dict,
+    default_account_id: UUID | None,
+) -> dict:
+    legs = params.get("legs")
+    if not legs or len(legs) < 2:
+        preview = await _propose_transfer(session, user_id, params, default_account_id)
+        legs = preview["legs"]
+
+    transaction_date = _parse_date(params.get("transaction_date")) or _parse_date(legs[0].get("transaction_date")) or date.today()
+    created_ids: list[str] = []
+    txns: list[Transaction] = []
+
+    for leg in legs:
+        account_id = leg.get("account_id")
+        if not account_id:
+            raise LedgerError("Missing account_id in transfer leg.")
+        try:
+            account_uuid = UUID(account_id) if isinstance(account_id, str) else account_id
+        except Exception:
+            raise LedgerError("Invalid account_id in transfer leg.")
+        result = await session.execute(
+            select(Account).where(Account.id == account_uuid, Account.user_id == user_id)
+        )
+        account = result.scalar_one_or_none()
+        if not account:
+            raise LedgerError("Transfer account not found or not yours.")
+        amount_decimal = Decimal(str(leg.get("amount")))
+        if amount_decimal == 0:
+            raise LedgerError("Transfer leg amount cannot be zero.")
+        txn = Transaction(
+            user_id=user_id,
+            account_id=account.id,
+            amount=amount_decimal,
+            currency=params.get("currency", "INR"),
+            transaction_date=transaction_date,
+            merchant=leg.get("merchant") or params.get("merchant"),
+            category=leg.get("category") or "Investments",
+            source=params.get("source", "ai_extracted"),
+            nw_impact=NwImpact.transfer.value,
+        )
+        session.add(txn)
+        txns.append(txn)
+
+    await session.commit()
+    for txn in txns:
+        await session.refresh(txn)
+        created_ids.append(str(txn.id))
+
+    investment_name = legs[1].get("account_name", "investment")
+    amount_abs = abs(float(legs[1].get("amount", 0)))
+    summary = (
+        f"Recorded SIP transfer ₹{amount_abs:,.0f} to {investment_name} "
+        f"on {transaction_date}."
+    )
+    return {
+        "created_ids": created_ids,
+        "created_id": created_ids[-1] if created_ids else None,
+        "legs": legs,
+        "summary": summary,
+        "message": summary,
+        "transaction_date": transaction_date.isoformat(),
+        "committed": True,
+    }
+
+
+async def _propose_recurring_bill(
+    session: AsyncSession,
+    user_id: UUID,
+    params: dict,
+    default_account_id: UUID | None,
+) -> dict:
+    name = (params.get("name") or params.get("merchant") or "").strip()
+    if not name:
+        raise LedgerError("Bill name is required. Say e.g. 'add recurring bill Netflix 499'.")
+    amount = params.get("amount")
+    if amount is None:
+        raise LedgerError("Amount is required for recurring bill.")
+    try:
+        amount_decimal = -abs(Decimal(str(amount)))
+    except Exception:
+        raise LedgerError("Invalid amount.")
+    account = await _resolve_account(session, user_id, params, default_account_id)
+    frequency = (params.get("frequency") or "monthly").strip().lower()
+    if frequency not in ("monthly", "weekly"):
+        raise LedgerError("frequency must be monthly or weekly.")
+    due_day = params.get("due_day")
+    weekday = params.get("weekday")
+    category = params.get("category")
+    return {
+        "name": name,
+        "amount": float(amount_decimal),
+        "frequency": frequency,
+        "due_day": int(due_day) if due_day is not None else None,
+        "weekday": int(weekday) if weekday is not None else None,
+        "category": category,
+        "account_id": str(account.id),
+        "account_name": account.name,
+        "preview": True,
+        "summary": (
+            f"Add recurring bill “{name}” ₹{abs(amount_decimal):,.0f} "
+            f"({frequency}) from {account.name}?"
+        ),
+    }
+
+
+async def _insert_recurring_bill(
+    session: AsyncSession,
+    user_id: UUID,
+    params: dict,
+    default_account_id: UUID | None,
+) -> dict:
+    name = (params.get("name") or "").strip()
+    if not name:
+        raise LedgerError("Bill name is required.")
+    amount = params.get("amount")
+    if amount is None:
+        raise LedgerError("Amount is required.")
+    amount_decimal = -abs(Decimal(str(amount)))
+    account = await _resolve_account(session, user_id, params, default_account_id)
+    frequency = (params.get("frequency") or "monthly").strip().lower()
+    if frequency not in ("monthly", "weekly"):
+        raise LedgerError("frequency must be monthly or weekly.")
+    bill = RecurringBill(
+        user_id=user_id,
+        account_id=account.id,
+        name=name,
+        amount=amount_decimal,
+        frequency=frequency,
+        due_day=int(params["due_day"]) if params.get("due_day") is not None else None,
+        weekday=int(params["weekday"]) if params.get("weekday") is not None else None,
+        category=params.get("category"),
+        is_active=True,
+    )
+    session.add(bill)
+    await session.commit()
+    await session.refresh(bill)
+    summary = f"Added recurring bill “{name}” ₹{abs(amount_decimal):,.0f} ({frequency})."
+    return {
+        "created_id": str(bill.id),
+        "name": name,
+        "amount": float(amount_decimal),
+        "frequency": frequency,
+        "account_id": str(account.id),
+        "account_name": account.name,
+        "summary": summary,
+        "message": summary,
     }
 
 
@@ -683,6 +1029,7 @@ async def _account_dict(
 
 
 async def _create_account(session: AsyncSession, user_id: UUID, params: dict) -> dict:
+    params = await _auto_resolve_parent(session, user_id, params)
     account_type = (params.get("account_type") or "bank").strip().lower()
     name = (params.get("name") or "").strip()
     if not name:
@@ -830,6 +1177,191 @@ async def _create_account(session: AsyncSession, user_id: UUID, params: dict) ->
         **acc,
         "created_id": acc["id"],
         "message": f"Added {account_type.replace('_', ' ')} account “{name}”{limit_note}.",
+    }
+
+
+async def _auto_resolve_parent(session: AsyncSession, user_id: UUID, params: dict) -> dict:
+    """For investment accounts without parent_account_id, auto-find the first bank account."""
+    if params.get("parent_account_id"):
+        return params
+    account_type = (params.get("account_type") or "bank").lower()
+    if account_type not in PARENT_REQUIRED_TYPES:
+        return params
+    result = await session.execute(
+        select(Account)
+        .where(Account.user_id == user_id, Account.account_type == "bank")
+        .order_by(Account.created_at.asc())
+        .limit(1)
+    )
+    bank = result.scalar_one_or_none()
+    if bank:
+        return {**params, "parent_account_id": str(bank.id)}
+    return params
+
+
+async def _propose_account(
+    session: AsyncSession,
+    user_id: UUID,
+    params: dict,
+) -> dict:
+    params = await _auto_resolve_parent(session, user_id, params)
+    account_type = (params.get("account_type") or "bank").strip().lower()
+    name = (params.get("name") or "").strip()
+    if account_type not in ACCOUNT_TYPES:
+        raise LedgerError(f"account_type must be one of: {', '.join(ACCOUNT_TYPES)}")
+    investment_mode = params.get("investment_mode")
+    emi_amount = params.get("emi_amount")
+    display_name = name or "(name required)"
+    summary_parts = [f'{account_type.replace("_", " ")} \u201c{display_name}\u201d']
+    if investment_mode:
+        summary_parts.append(f"mode={investment_mode}")
+    if emi_amount:
+        summary_parts.append(f"SIP ₹{float(emi_amount):,.0f}/mo")
+    if params.get("loan_type"):
+        summary_parts.append(f"type={params['loan_type']}")
+    if params.get("emi_amount") and account_type in LOAN_TYPES:
+        summary_parts.append(f"EMI ₹{float(params['emi_amount']):,.0f}")
+    summary = f"Create account: {' · '.join(summary_parts)}?"
+    return {
+        "preview": True,
+        "summary": summary,
+        "account_type": account_type,
+        "name": name,
+        **{k: params[k] for k in (
+            "institution", "loan_type", "credit_limit", "sanctioned_amount",
+            "emi_amount", "tenure_months", "interest_rate", "due_day",
+            "start_date", "investment_mode", "opening_balance",
+            "parent_account_id", "currency",
+        ) if params.get(k) is not None},
+    }
+
+
+async def _explain_transaction(
+    session: AsyncSession,
+    user_id: UUID,
+    params: dict,
+) -> dict:
+    merchant = params.get("merchant") or params.get("description")
+    limit = int(params.get("limit") or 5)
+
+    q = (
+        select(Transaction)
+        .where(Transaction.user_id == user_id)
+        .order_by(Transaction.transaction_date.desc(), Transaction.created_at.desc())
+        .limit(limit)
+    )
+    if merchant:
+        lower = merchant.lower()
+        q = q.where(Transaction.merchant.ilike(f"%{lower}%"))
+
+    result = await session.execute(q)
+    rows = result.scalars().all()
+    if not rows:
+        msg = f"No transactions found{f' for {merchant}' if merchant else ''}."
+        return {"transactions": [], "message": msg}
+
+    items = [
+        {
+            "id": str(t.id),
+            "date": t.transaction_date.isoformat(),
+            "merchant": t.merchant,
+            "category": t.category,
+            "amount": float(t.amount),
+            "nw_impact": t.nw_impact,
+            "account_id": str(t.account_id),
+        }
+        for t in rows
+    ]
+    msg = f"Found {len(items)} transaction(s)" + (f" for {merchant}" if merchant else "") + "."
+    return {"transactions": items, "message": msg}
+
+
+async def _propose_recategorize(
+    session: AsyncSession,
+    user_id: UUID,
+    params: dict,
+) -> dict:
+    transaction_id = params.get("transaction_id")
+    merchant = params.get("merchant") or params.get("description")
+    new_category = (params.get("new_category") or params.get("category") or "").strip()
+    if not new_category:
+        raise LedgerError("New category is required. Say e.g. 'recategorize Netflix to Entertainment'.")
+
+    if transaction_id:
+        try:
+            tid = UUID(str(transaction_id))
+        except Exception:
+            raise LedgerError("Invalid transaction_id.")
+        result = await session.execute(
+            select(Transaction).where(Transaction.id == tid, Transaction.user_id == user_id)
+        )
+        txn = result.scalar_one_or_none()
+        if not txn:
+            raise LedgerError("Transaction not found.")
+    elif merchant:
+        result = await session.execute(
+            select(Transaction)
+            .where(Transaction.user_id == user_id, Transaction.merchant.ilike(f"%{merchant.lower()}%"))
+            .order_by(Transaction.transaction_date.desc())
+            .limit(1)
+        )
+        txn = result.scalar_one_or_none()
+        if not txn:
+            raise LedgerError(f"No transactions found for '{merchant}'.")
+    else:
+        raise LedgerError("Specify a merchant name or transaction_id to recategorize.")
+
+    summary = (
+        f'Recategorize \u201c{txn.merchant or "transaction"}\u201d '
+        f"from {txn.category or 'uncategorized'} \u2192 {new_category} "
+        f"(\u20b9{abs(float(txn.amount)):,.0f} on {txn.transaction_date})?"
+    )
+    return {
+        "preview": True,
+        "transaction_id": str(txn.id),
+        "merchant": txn.merchant,
+        "old_category": txn.category,
+        "new_category": new_category,
+        "amount": float(txn.amount),
+        "transaction_date": txn.transaction_date.isoformat(),
+        "summary": summary,
+    }
+
+
+async def _insert_recategorize(
+    session: AsyncSession,
+    user_id: UUID,
+    params: dict,
+) -> dict:
+    transaction_id = params.get("transaction_id")
+    if not transaction_id:
+        raise LedgerError("transaction_id is required to recategorize.")
+    try:
+        tid = UUID(str(transaction_id))
+    except Exception:
+        raise LedgerError("Invalid transaction_id.")
+    result = await session.execute(
+        select(Transaction).where(Transaction.id == tid, Transaction.user_id == user_id)
+    )
+    txn = result.scalar_one_or_none()
+    if not txn:
+        raise LedgerError("Transaction not found.")
+    new_category = (params.get("new_category") or params.get("category") or "").strip()
+    if not new_category:
+        raise LedgerError("New category is required.")
+    old_category = txn.category
+    txn.category = new_category
+    await session.commit()
+    await session.refresh(txn)
+    summary = f'Recategorized \u201c{txn.merchant or "transaction"}\u201d to {new_category}.'
+    return {
+        "transaction_id": str(txn.id),
+        "merchant": txn.merchant,
+        "old_category": old_category,
+        "new_category": new_category,
+        "amount": float(txn.amount),
+        "summary": summary,
+        "message": summary,
     }
 
 

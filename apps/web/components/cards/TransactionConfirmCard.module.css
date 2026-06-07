@@ -5,6 +5,16 @@
     margin-bottom: 14px;
 }
 
+.legBlock {
+    padding: 10px 0;
+    border-top: 1px dashed var(--border);
+}
+
+.legBlock:first-child {
+    border-top: none;
+    padding-top: 0;
+}
+
 .amountHero {
     font-size: 2rem;
     font-weight: 700;

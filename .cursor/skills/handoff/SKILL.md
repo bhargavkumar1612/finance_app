@@ -144,6 +144,21 @@ Use domain-interview **Audit mode** when drift is material; do not patch around 
 - Treating uncommitted diff as finished or tested
 - Ignoring `nw_impact` / confirm-card invariants when summarizing "what's done"
 
+## Cursor IDE → CLI handoff
+
+When the owner switches from **Cursor IDE** to the **`cursor-agent` CLI** (same repo, no chat history):
+
+| Step | Who | Action |
+|------|-----|--------|
+| Outbound (optional) | IDE agent | Summarize decisions not yet in docs; note doc gaps |
+| Inbound | CLI | Owner runs `cursor-agent --handoff` in project root |
+
+The CLI loads `.cursor/skills/`, `.cursor/rules/`, and user settings (`settingSources: all`), then invokes this skill with a git snapshot. In chat: `/handoff` re-runs inbound anytime.
+
+**Owner one-liner:** `cd your-repo && cursor-agent --handoff`
+
+Persistent env (always handoff on launch): `export CURSOR_AGENT_HANDOFF=1`
+
 ## Additional resources
 
 - Handoff output format: [handoff-template.md](handoff-template.md)

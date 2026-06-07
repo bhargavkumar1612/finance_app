@@ -512,19 +512,212 @@ Shared language between the project owner, documentation, and code. Agents shoul
 
 ---
 
-## Chat and intents
+## Chat and copilot
+
+### Copilot advice boundary
+
+**Definition:** Chat shows **facts from Ledger only** (invested/current/P&L, allocation %, “Fund X is down 12%”) plus **deterministic suggestions that can increase net worth**. No buy/sell picks, no specific fund recommendations, no tax filing advice.
+
+**Allowed suggestion types:** increase SIP when surplus allows; pay high-interest debt first; update stale `current_value`; log missing salary/SIP/EMI; move idle bank cash to FD/RD (informational); 80C/tax-saving nudge (rules-only).
+
+**Synonyms (avoid in code/UI):** “investment advice”, “you should buy X”
+
+**Related code:**
+- `app/agents/insight_agent.py`
+- `app/services/missing_data.py`
+- `app/agents/ledger_agent.py` (`compute_affordability`)
+
+**Decided on:** 2026-06-07 (Round 8 — AI chat interview)
+
+---
+
+### Portfolio dashboard (chat)
+
+**Definition:** Primary investment answer in chat — a **one-time visual dashboard** card with hero totals, rankings, and charts. Scope includes **all wealth the user tracks**: cash (bank + online wallet), **Account holdings** (MF, FD, RD, stock, EPF), and **physical `Asset`** rows (property, gold — value only, usually no P&L).
+
+**Rankings (deterministic, from Ledger):**
+
+| Ranking | Sort key |
+|---------|----------|
+| Most liquid → least | Fixed liquidity stack (see **Liquidity rank**) |
+| Most valuable | **Current value** (`current_value` or txn balance fallback) |
+| Most profitable | **Both** P&L **%** and P&L **₹** — separate top lists / bar charts |
+
+**Missing `current_value`:** Fall back to txn balance; label **“as per ledger”** in UI copy.
+
+**UX pattern:** **Primary dashboard + drill-down intents** — e.g. “show allocation pie”, “show P&L bars”. Hide chart sections the user has **no stake in** (zero accounts / zero value); use **Financial persona** to prioritize which drill-downs to suggest. Card **footer** always shows net-worth-increasing **suggested actions** (add account type user lacks, update values, log SIP, etc.).
+
+**Synonyms (avoid in code/UI):** LLM-estimated portfolio value
+
+**Canonical in code:** `Intent.portfolio_summary`, Ledger tool in `portfolio_summary.py`; `CardType.investment_portfolio_dashboard`; drill-downs `investment_pnl_bars`, `investment_pie_chart`
+
+**Related code:**
+- `app/services/investment_valuation.py`
+- `app/services/net_worth.py`
+- `app/services/account_grouping.py`
+- `apps/web/components/cards/SpendingDashboardCard.tsx` (visual template)
+- `apps/web/components/cards/InvestmentPieChartCard.tsx`
+
+**Decided on:** 2026-06-07 (Round 8)
+
+---
+
+### Liquidity rank (portfolio ordering)
+
+**Definition:** Canonical **most liquid → least liquid** order for portfolio dashboard sorting. Encoded in application code — not user-editable.
+
+| Rank | Bucket |
+|------|--------|
+| 1 | `bank`, `cash`, `wallet` (spendable cash) |
+| 2 | `stock` |
+| 3 | `mutual_fund` |
+| 4 | `recurring_deposit` |
+| 5 | `fixed_deposit` |
+| 6 | `epf` |
+| 7 | Physical **`Asset`** (property, gold, etc.) |
+
+**Related code:**
+- `app/services/account_types.py`
+- Portfolio Ledger tool *(planned)*
+
+**Decided on:** 2026-06-07 (Round 8)
+
+---
+
+### SIP status (chat)
+
+**Definition:** Chat answer for SIP mutual funds — per fund and aggregate. Fields shown:
+
+- **Last paid on** — date of most recent qualifying transfer installment
+- **Next expected on** — computed from `due_day` / schedule when not yet paid this month
+- **Already paid in {Month}** — when a qualifying installment exists in the **current calendar month**
+
+Qualifying installment = positive `nw_impact=transfer` txn on the MF account matching SIP logic in `compute_sip_schedule`.
+
+**Synonyms (avoid in code/UI):** inferring payment from bank debit alone without MF account txn
+
+**Canonical in code:** `Intent.sip_status_query`, `compute_sip_schedule`, `CardType.sip_schedule_summary`
+
+**Related code:**
+- `app/services/mf_sip_schedule.py`
+- `app/services/mf_investment_mode.py`
+
+**Decided on:** 2026-06-07 (Round 8)
+
+---
+
+### Record transfer (chat)
+
+**Definition:** Confirm-before-write flow for SIP / investment funding — **dual-leg cycle** in one confirmation: **bank debit** (`nw_impact=transfer`, negative on parent bank) + **MF/holdings credit** (`nw_impact=transfer`, positive on investment account). Requires linked `parent_account_id` when investment account has a parent bank.
+
+**Synonyms (avoid in code/UI):** recording SIP as `add_expense` / spending
+
+**Canonical in code:** `Intent.record_transfer`, `CardType.transaction_confirm`
+
+**Related code:**
+- `app/services/transaction_semantics.py`
+- `app/agents/ledger_agent.py`
+- `frontend/components/cards/TransactionConfirmCard.tsx`
+
+**Decided on:** 2026-06-07 (Round 8)
+
+---
+
+### Affordability (committed obligations)
+
+**Definition:** Safe EMI / surplus calculation **must subtract all committed outflows** before answering “can I afford X?”:
+
+- All **loan** `emi_amount` values
+- All **SIP** `emi_amount` on `mutual_fund` + `investment_mode=sip`
+- All active **`RecurringBill`** amounts
+- **Credit card** payment commitments (minimum or statement due when tracked)
+
+Numbers remain deterministic — never from LLM.
+
+**Related code:**
+- `app/agents/ledger_agent.py` (`compute_affordability`)
+- `app/db/models.py` (`RecurringBill`, `Account`)
+
+**Decided on:** 2026-06-07 (Round 8)
+
+---
+
+### Obligations hub (chat)
+
+**Definition:** Single chat card for “what’s due this month?” with **grouped sections**: SIPs | Loan EMIs | Recurring bills | Credit card due days. CC `due_day` shows even without a linked `RecurringBill` (informational). Sorted by date within each section.
+
+**Canonical in code:** `Intent.upcoming_obligations`, `CardType.obligation_list`
+
+**Related code:**
+- `app/services/mf_sip_schedule.py`
+- `app/services/loan_schedule.py`
+- `app/api/recurring_bills.py`
+- `app/db/models.py` (`Account.due_day`)
+
+**Decided on:** 2026-06-07 (Round 8)
+
+---
+
+### Financial persona
+
+**Definition:** Per-user **derived profile** stored server-side (markdown or structured fields in DB) — **not shown raw** by default. Built from **rules** (salary pattern, missing-data flags, account mix) plus **LLM summary after each chat session**. User may **view and edit** in Settings. Used for **proactive nudge copy** on Accounts + chat (expand to other surfaces later) and to **tailor which portfolio drill-downs / footer suggestions** to show — hide areas user has no stake in; suggest onboarding actions they lack.
+
+**Persona fields (all in scope):** income pattern (salary day, avg surplus); spending personality (category skew); investment style (SIP-regular vs lump-sum); risk/tone preference; goals mentioned in chat.
+
+**Privacy:** Stored per user in PostgreSQL; fed to Insight/orchestrator context — not logged in plain text to external systems beyond configured LLM provider.
+
+**Synonyms (avoid in code/UI):** “AI memory” replacing Ledger facts
+
+**Canonical in code:** `UserFinancialPersona` — see [decisions/002-financial-persona.md](./decisions/002-financial-persona.md)
+
+**Related code:**
+- `app/core/orchestrator.py`
+- `app/agents/insight_agent.py`
+- `apps/web/app/settings/page.tsx` (editor live)
+
+**Decided on:** 2026-06-07 (Round 8)
+
+---
+
+### Proactive nudges
+
+**Definition:** Rule-based hints (missing salary, missed SIP, stale investment values, etc.) surfaced **proactively** — not only when user asks. Surfaces: **chat** (session/open) and **Accounts** page; may expand to home/dashboard. Copy personalized via **Financial persona** where available.
+
+**Related code:**
+- `app/services/missing_data.py`
+- `app/api/hints.py` (`GET /v1/hints`)
+- `apps/web/app/accounts/page.tsx`
+- `apps/web/app/chat/page.tsx`
+
+**Decided on:** 2026-06-07 (Round 8)
+
+---
+
+### Chat intents (phrase map)
 
 | User phrase | Intent |
 |-------------|--------|
 | "where did my money go", "spending breakdown", "pie chart" | `spending_analysis` |
 | "what's my net worth", "how much am I worth" | `net_worth_query` |
+| "how are my investments", "MF P&L", "portfolio", "allocation" | `portfolio_summary` |
+| "show allocation", "investment pie" | `investment_allocation` |
+| "show P&L", "best performers", "profit on funds" | `portfolio_pnl_drilldown` |
+| "did I pay SIP", "SIPs due", "installments left" | `sip_status_query` |
+| "when does FD mature", "RD ending" | `fd_maturity_query` → `fd_maturity_summary` card |
+| "EMIs left", "loan payoff", "total EMI" | `loan_emi_summary` / `debt_payoff_planner` |
+| "what's due this month", "upcoming bills" | `upcoming_obligations` |
 | "add expense", "I spent", "paid for" | `add_expense` (confirm before write) |
+| "record SIP", "transfer to MF", "fund my SIP" | `record_transfer` |
 | "salary", "got paid", "record income" | `add_income` |
 | "can I afford", "safe EMI" | `affordability_check` |
 | "recurring bills", "subscriptions", "rent due" | `list_recurring_bills` |
-| "import statement" | `import_statement` |
+| "import statement", "upload CSV" | `import_statement` → `import_guide` card |
+| "explain this charge", "what did I spend at X" | `explain_transaction` → `transaction_detail` card |
+| "recategorize X to Y", "change category of X to Y" | `recategorize_transaction` → confirm → update |
+| "add SIP account", "create MF account", "add EPF" | `create_account_guided` → `account_create_confirm` card |
+| "cash flow", "top expenses", "unusual spending" | Phase 4 analytics intents |
 
-**Decided on:** 2026-06-06 (Round 4 — recorded during implementation)
+**Decided on:** 2026-06-06 (Round 4); expanded 2026-06-07 (Round 8, S3.2–3.4)
 
 ---
 

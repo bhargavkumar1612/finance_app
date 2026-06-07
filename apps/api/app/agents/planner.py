@@ -17,7 +17,7 @@ from google.adk.agents import BaseAgent, LlmAgent
 from openai import AsyncOpenAI
 
 from app.core.config import settings
-from app.services.llm_client import try_get_env_async_client_and_model
+from app.services.llm_client import LLMProvider, get_llm_provider, try_get_env_async_client_and_model
 from app.core.schemas import Intent, PlannerOutput, PlannerStep
 from app.core.schemas import ConversationState
 
@@ -74,6 +74,72 @@ routes = [
             "Register a wallet account",
         ],
     ),
+    Route(
+        name="portfolio_summary",
+        utterances=[
+            "How are my investments?",
+            "How is my portfolio doing?",
+            "Show my investment dashboard",
+            "MF P and L",
+        ],
+    ),
+    Route(
+        name="portfolio_pnl_drilldown",
+        utterances=[
+            "Show my most profitable investments",
+            "Top performers by P and L",
+            "Profit and loss on my funds",
+        ],
+    ),
+    Route(
+        name="sip_status_query",
+        utterances=[
+            "Did I pay my SIP this month?",
+            "SIP status",
+            "Which SIPs are due?",
+        ],
+    ),
+    Route(
+        name="fd_maturity_query",
+        utterances=[
+            "When does my FD mature?",
+            "FD maturity date",
+            "RD maturity",
+        ],
+    ),
+    Route(
+        name="investment_allocation",
+        utterances=[
+            "Show my investment allocation",
+            "Portfolio allocation pie chart",
+            "Breakdown by investment type",
+        ],
+    ),
+    Route(
+        name="upcoming_obligations",
+        utterances=[
+            "What's due this month?",
+            "Upcoming bills and EMIs",
+            "Show my obligations",
+            "What do I owe this month?",
+        ],
+    ),
+    Route(
+        name="loan_emi_summary",
+        utterances=[
+            "How much is my total EMI?",
+            "Loan EMI summary",
+            "EMIs left on my loans",
+        ],
+    ),
+    Route(
+        name="compute_affordability",
+        utterances=[
+            "Can I afford a new loan?",
+            "What's my safe EMI?",
+            "Affordability check",
+        ],
+    ),
 ]
 
 # Provide fallback router logic
@@ -101,6 +167,21 @@ _INTENT_MAP = {
     "project_future_balance": Intent.project_future_balance,
     "debt_payoff_planner": Intent.debt_payoff_planner,
     "investment_allocation": Intent.investment_allocation,
+    "portfolio_summary": Intent.portfolio_summary,
+    "portfolio_pnl_drilldown": Intent.portfolio_pnl_drilldown,
+    "sip_status_query": Intent.sip_status_query,
+    "fd_maturity_query": Intent.fd_maturity_query,
+    "upcoming_obligations": Intent.upcoming_obligations,
+    "loan_emi_summary": Intent.loan_emi_summary,
+    "propose_recurring_bill": Intent.create_recurring_bill,
+    "insert_recurring_bill": Intent.create_recurring_bill,
+    "propose_transfer": Intent.record_transfer,
+    "insert_transfer": Intent.record_transfer,
+    "propose_account": Intent.create_account_guided,
+    "insert_account": Intent.create_account_guided,
+    "explain_transaction": Intent.explain_transaction,
+    "propose_recategorize": Intent.recategorize_transaction,
+    "insert_recategorize": Intent.recategorize_transaction,
     "vendor_spending_history": Intent.vendor_spending_history,
     "unusual_spending_alert": Intent.unusual_spending_alert,
     "create_account": Intent.manage_accounts,
@@ -261,6 +342,153 @@ TOOLS = [
         "required": ["account_id"]
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "portfolio_summary",
+      "description": "Investment portfolio dashboard: current value, P&L, liquidity ranking, allocation pie. Use for 'how are my investments', 'portfolio', 'MF performance'.",
+      "parameters": { "type": "object", "properties": {}, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "portfolio_pnl_drilldown",
+      "description": "Top investment performers by P&L percent and rupee amount. Use for 'most profitable funds', 'P&L breakdown'.",
+      "parameters": { "type": "object", "properties": {}, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "sip_status_query",
+      "description": "SIP mutual fund status: last paid, next due, paid this month. Use for 'did I pay SIP', 'SIP due'.",
+      "parameters": { "type": "object", "properties": {}, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fd_maturity_query",
+      "description": "Fixed deposit and recurring deposit maturity dates. Use for 'when does FD mature', 'RD ending'.",
+      "parameters": { "type": "object", "properties": {}, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "investment_allocation",
+      "description": "Portfolio allocation pie by investment type (MF, FD, stock, EPF). Use for 'investment allocation', 'breakdown by type'.",
+      "parameters": { "type": "object", "properties": {}, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "upcoming_obligations",
+      "description": "Unified obligations hub: SIPs, loan EMIs, recurring bills, credit card due dates. Use for 'what's due', 'upcoming bills'.",
+      "parameters": { "type": "object", "properties": {}, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "loan_emi_summary",
+      "description": "Loan EMI totals and per-loan breakdown. Use for 'total EMI', 'loan EMI summary'.",
+      "parameters": { "type": "object", "properties": {}, "required": [] }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "insert_recurring_bill",
+      "description": "Create a recurring monthly or weekly bill (rent, subscription). Requires confirm.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Bill name e.g. Netflix, Rent" },
+          "amount": { "type": "number", "description": "Monthly amount (positive number)" },
+          "frequency": { "type": "string", "enum": ["monthly", "weekly"] },
+          "due_day": { "type": "integer", "description": "Day of month 1-31" },
+          "category": { "type": "string" },
+          "account_id": { "type": "string" }
+        },
+        "required": ["name", "amount"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "insert_transfer",
+      "description": "Record an investment/SIP transfer as dual-leg bank debit + MF credit. Use for 'record SIP', 'transfer to MF', 'fund my SIP'. Never use insert_transaction for SIP funding.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "amount": { "type": "number", "description": "Transfer amount (positive)" },
+          "investment_name": { "type": "string", "description": "MF/SIP account name" },
+          "transaction_date": { "type": "string", "description": "ISO date YYYY-MM-DD" }
+        },
+        "required": ["amount"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "insert_account",
+      "description": "Creates any account type with full SIP/investment fields. Use when user says 'add SIP', 'create mutual fund account', 'add EPF', etc. Requires confirm before write.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "account_type": { "type": "string", "enum": ["bank", "credit_card", "wallet", "cash", "loan", "mutual_fund", "fixed_deposit", "recurring_deposit", "stock", "epf"] },
+          "name": { "type": "string" },
+          "institution": { "type": "string" },
+          "investment_mode": { "type": "string", "enum": ["one_time", "sip"], "description": "mutual_fund only" },
+          "emi_amount": { "type": "number", "description": "SIP monthly amount" },
+          "due_day": { "type": "integer", "description": "SIP due day 1-31" },
+          "start_date": { "type": "string", "description": "SIP/loan start date YYYY-MM-DD" },
+          "tenure_months": { "type": "integer" },
+          "loan_type": { "type": "string", "enum": ["home", "personal", "vehicle", "education", "other"] },
+          "credit_limit": { "type": "number" },
+          "opening_balance": { "type": "number" },
+          "parent_account_id": { "type": "string" }
+        },
+        "required": ["account_type", "name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "explain_transaction",
+      "description": "Shows recent transactions for a merchant. Use for 'what is this charge?', 'explain Netflix', 'show me recent Swiggy transactions'.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "merchant": { "type": "string", "description": "Merchant or description to search" },
+          "limit": { "type": "integer", "description": "Max results, default 5" }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "insert_recategorize",
+      "description": "Change the category of a transaction. Use for 'recategorize Netflix to Entertainment', 'change Swiggy to Food'. Requires confirm before write.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "merchant": { "type": "string", "description": "Merchant name to find the transaction" },
+          "new_category": { "type": "string", "description": "New category to assign" },
+          "transaction_id": { "type": "string", "description": "Optional exact transaction UUID" }
+        },
+        "required": ["new_category"]
+      }
+    }
   }
 ]
 
@@ -368,6 +596,474 @@ def _detect_net_worth(message: str) -> PlannerOutput | None:
     return None
 
 
+def _detect_portfolio_summary(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if any(
+        phrase in lower
+        for phrase in (
+            "how are my investments",
+            "my investments",
+            "investment dashboard",
+            "portfolio summary",
+            "how is my portfolio",
+            "how are my mfs",
+            "mf p&l",
+            "mf pnl",
+            "mutual fund performance",
+        )
+    ) or ("portfolio" in lower and "invest" in lower) or ("mf" in lower and any(w in lower for w in ("doing", "performance", "p&l", "pnl"))):
+        return PlannerOutput(
+            intent=Intent.portfolio_summary,
+            steps=[PlannerStep(agent="ledger", action="portfolio_summary", params={})],
+            ui_mode="guided_flow",
+        )
+    return None
+
+
+def _detect_investment_allocation(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if any(
+        phrase in lower
+        for phrase in (
+            "investment allocation",
+            "allocation pie",
+            "portfolio allocation",
+            "show allocation",
+            "breakdown by type",
+        )
+    ) or ("allocation" in lower and "invest" in lower):
+        return PlannerOutput(
+            intent=Intent.investment_allocation,
+            steps=[PlannerStep(agent="ledger", action="investment_allocation", params={})],
+            ui_mode="guided_flow",
+        )
+    return None
+
+
+def _detect_portfolio_pnl(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if any(
+        phrase in lower
+        for phrase in (
+            "p&l",
+            "pnl",
+            "profit and loss",
+            "most profitable",
+            "top performer",
+            "best investment",
+            "show pnl",
+        )
+    ):
+        return PlannerOutput(
+            intent=Intent.portfolio_pnl_drilldown,
+            steps=[PlannerStep(agent="ledger", action="portfolio_pnl_drilldown", params={})],
+            ui_mode="guided_flow",
+        )
+    return None
+
+
+def _detect_sip_status(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if any(
+        phrase in lower
+        for phrase in (
+            "did i pay sip",
+            "did i pay my sip",
+            "sip status",
+            "sips due",
+            "installments left",
+            "sip schedule",
+            "my sips",
+        )
+    ) or (
+        "sip" in lower
+        and any(w in lower for w in ("pay", "paid", "due", "status", "installment"))
+    ):
+        return PlannerOutput(
+            intent=Intent.sip_status_query,
+            steps=[PlannerStep(agent="ledger", action="sip_status_query", params={})],
+            ui_mode="guided_flow",
+        )
+    return None
+
+
+def _detect_fd_maturity(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if any(
+        phrase in lower
+        for phrase in (
+            "fd maturity",
+            "rd maturity",
+            "when does my fd",
+            "when does my rd",
+            "maturity date",
+            "fixed deposit mature",
+        )
+    ):
+        return PlannerOutput(
+            intent=Intent.fd_maturity_query,
+            steps=[PlannerStep(agent="ledger", action="fd_maturity_query", params={})],
+            ui_mode="guided_flow",
+        )
+    return None
+
+
+def _detect_upcoming_obligations(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if any(
+        phrase in lower
+        for phrase in (
+            "upcoming obligations",
+            "upcoming bills",
+            "what's due",
+            "whats due",
+            "due this month",
+            "what do i owe",
+            "obligations hub",
+            "show obligations",
+            "show my obligations",
+        )
+    ) or ("obligations" in lower) or (
+        "due" in lower and any(w in lower for w in ("bill", "emi", "sip", "month"))
+    ):
+        return PlannerOutput(
+            intent=Intent.upcoming_obligations,
+            steps=[PlannerStep(agent="ledger", action="upcoming_obligations", params={})],
+            ui_mode="guided_flow",
+        )
+    return None
+
+
+def _detect_loan_emi_summary(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if any(
+        phrase in lower
+        for phrase in (
+            "loan emi",
+            "total emi",
+            "how much emi",
+            "emis left",
+            "emi summary",
+            "my emis",
+        )
+    ) or ("emi" in lower and "loan" in lower):
+        return PlannerOutput(
+            intent=Intent.loan_emi_summary,
+            steps=[PlannerStep(agent="ledger", action="loan_emi_summary", params={})],
+            ui_mode="guided_flow",
+        )
+    return None
+
+
+def _detect_affordability(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if any(
+        phrase in lower
+        for phrase in (
+            "can i afford",
+            "safe emi",
+            "affordability",
+            "afford a loan",
+            "afford new emi",
+        )
+    ):
+        return PlannerOutput(
+            intent=Intent.affordability_check,
+            steps=[PlannerStep(agent="ledger", action="compute_affordability", params={})],
+            ui_mode="guided_flow",
+        )
+    return None
+
+
+def _detect_explain_transaction(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if not any(
+        phrase in lower
+        for phrase in (
+            "explain this",
+            "what is this charge",
+            "what is this transaction",
+            "what is this payment",
+            "explain the charge",
+            "show recent",
+            "show my recent",
+            "what did i spend at",
+        )
+    ):
+        return None
+    merchant = None
+    for pattern in (
+        r"explain\s+(?:the\s+)?(?:charge|transaction|payment)?\s*(?:from|at|for|by)?\s+(.+?)(?:\?|$)",
+        r"what is this charge (?:from|for)\s+(.+?)(?:\?|$)",
+        r"show (?:my )?recent\s+(.+?)\s+(?:transactions|charges)(?:\?|$)",
+        r"what did i spend at\s+(.+?)(?:\?|$)",
+    ):
+        m = re.search(pattern, message, re.I)
+        if m:
+            merchant = m.group(1).strip().rstrip(".")
+            break
+    params: dict = {}
+    if merchant:
+        params["merchant"] = merchant
+    return PlannerOutput(
+        intent=Intent.explain_transaction,
+        steps=[PlannerStep(agent="ledger", action="explain_transaction", params=params)],
+        ui_mode="guided_flow",
+    )
+
+
+def _detect_recategorize_transaction(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if not any(
+        phrase in lower
+        for phrase in (
+            "recategorize",
+            "change category",
+            "change the category",
+            "move to category",
+            "categorize as",
+            "classify as",
+            "classify ",
+            "mark as",
+        )
+    ):
+        return None
+    new_category = None
+    for pattern in (
+        r"(?:recategorize|categorize|classify|mark)\s+.+?\s+(?:as|to)\s+(.+?)(?:\.|$)",
+        r"change\s+(?:the\s+)?category\s+(?:of\s+.+?\s+)?to\s+(.+?)(?:\.|$)",
+        r"move\s+to\s+(.+?)(?:\s+category)?(?:\.|$)",
+    ):
+        m = re.search(pattern, message, re.I)
+        if m:
+            new_category = m.group(1).strip().rstrip(".")
+            break
+    if not new_category:
+        return None
+    merchant = None
+    for pattern in (
+        r"(?:recategorize|categorize|classify|change category of|mark)\s+(.+?)\s+(?:as|to)\s+",
+    ):
+        m = re.search(pattern, message, re.I)
+        if m:
+            merchant = m.group(1).strip()
+            break
+    params: dict = {"new_category": new_category}
+    if merchant:
+        params["merchant"] = merchant
+    return PlannerOutput(
+        intent=Intent.recategorize_transaction,
+        steps=[PlannerStep(agent="ledger", action="insert_recategorize", params=params)],
+        ui_mode="guided_flow",
+    )
+
+
+def _detect_create_account_guided(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if not any(
+        phrase in lower
+        for phrase in (
+            "add sip account",
+            "create sip",
+            "add mutual fund",
+            "create mutual fund",
+            "add mf account",
+            "create mf account",
+            "add epf",
+            "create epf",
+            "add fd account",
+            "create fd",
+            "add recurring deposit",
+        )
+    ):
+        return None
+    account_type = "mutual_fund"
+    if "epf" in lower:
+        account_type = "epf"
+    elif "fd" in lower or "fixed deposit" in lower:
+        account_type = "fixed_deposit"
+    elif "recurring deposit" in lower or " rd " in lower:
+        account_type = "recurring_deposit"
+    investment_mode = "sip" if "sip" in lower else None
+    amount_match = re.search(r"(\d+(?:\.\d+)?)", message)
+    name = ""
+    for pat in (
+        r"(?:add|create)\s+(?:sip|mutual fund|mf|epf|fd|recurring deposit|rd)\s+account\s+(?:\d+\s+)?(?:for|named?)\s+(.+?)(?:\s*$)",
+        r"(?:add|create)\s+(?:sip|mutual fund|mf|epf|fd|recurring deposit|rd)\s+(?:account\s+)?(?:\d+\s+)?(.+?)(?:\s*$)",
+    ):
+        m = re.search(pat, message, re.I)
+        if m:
+            candidate = m.group(1).strip().rstrip(".")
+            candidate = re.sub(r"^\d+\s+", "", candidate).strip()
+            if candidate:
+                name = candidate
+                break
+    params: dict = {"account_type": account_type, "name": name}
+    if investment_mode:
+        params["investment_mode"] = investment_mode
+    if amount_match and investment_mode == "sip":
+        params["emi_amount"] = float(amount_match.group(1))
+    return PlannerOutput(
+        intent=Intent.create_account_guided,
+        steps=[PlannerStep(agent="ledger", action="insert_account", params=params)],
+        ui_mode="guided_flow",
+    )
+
+
+def _detect_record_transfer(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    transfer_phrases = (
+        "record sip",
+        "transfer to mf",
+        "transfer to mutual",
+        "to my mutual",
+        "fund my sip",
+        "fund sip",
+        "paid sip",
+        "record transfer",
+        "transfer to my",
+        "sip payment",
+        "invested in",
+    )
+    has_transfer_phrase = any(phrase in lower for phrase in transfer_phrases)
+    has_transfer_amount = bool(re.search(r"transfer\s+\d", lower))
+    if not (has_transfer_phrase or has_transfer_amount):
+        return None
+    amount_match = re.search(r"(\d+(?:\.\d+)?)", message)
+    if not amount_match:
+        return None
+    amount = float(amount_match.group(1))
+    investment_name = None
+    for pattern in (
+        r"record sip\s+(?:\d+(?:\.\d+)?\s+)?(?:for\s+)?(.+?)(?:\.|$)",
+        r"transfer\s+\d+(?:\.\d+)?\s+to\s+(.+?)(?:\.|$)",
+        r"fund\s+(?:my\s+)?sip(?:\s+\d+(?:\.\d+)?)?\s+(?:for\s+)?(.+?)(?:\.|$)",
+        r"for\s+(.+?)(?:\.|$)",
+    ):
+        m = re.search(pattern, message, re.I)
+        if m:
+            investment_name = m.group(1).strip()
+            break
+    params: dict = {"amount": amount}
+    if investment_name:
+        params["investment_name"] = investment_name
+    return PlannerOutput(
+        intent=Intent.record_transfer,
+        steps=[
+            PlannerStep(
+                agent="ledger",
+                action="insert_transfer",
+                params=params,
+            )
+        ],
+        ui_mode="guided_flow",
+    )
+
+
+def _detect_create_recurring_bill(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if not any(
+        phrase in lower
+        for phrase in (
+            "recurring bill",
+            "add rent",
+            "set up rent",
+            "monthly subscription",
+            "add subscription",
+        )
+    ):
+        return None
+    amount_match = re.search(r"(\d+(?:\.\d+)?)", message)
+    if not amount_match:
+        return None
+    amount = float(amount_match.group(1))
+    name = None
+    for pattern in (
+        r"recurring bill\s+(.+?)\s+\d",
+        r"add rent\s+(.+?)\s+\d",
+        r"subscription\s+(.+?)\s+\d",
+        r"bill\s+(.+?)\s+\d",
+    ):
+        m = re.search(pattern, message, re.I)
+        if m:
+            name = m.group(1).strip()
+            break
+    if not name:
+        name = "Recurring bill"
+    return PlannerOutput(
+        intent=Intent.create_recurring_bill,
+        steps=[
+            PlannerStep(
+                agent="ledger",
+                action="insert_recurring_bill",
+                params={"name": name, "amount": amount, "frequency": "monthly"},
+            )
+        ],
+        ui_mode="guided_flow",
+    )
+
+
+def _slice1_keyword_route(message: str) -> PlannerOutput | None:
+    """Keyword fallbacks for Slice 1 intents (works with LLM_PROVIDER=none)."""
+    for detector in (
+        _detect_portfolio_summary,
+        _detect_sip_status,
+        _detect_fd_maturity,
+        _detect_portfolio_pnl,
+        _detect_investment_allocation,
+    ):
+        result = detector(message)
+        if result:
+            return result
+    return None
+
+
+def _slice2_keyword_route(message: str) -> PlannerOutput | None:
+    """Keyword fallbacks for Slice 2 intents (works with LLM_PROVIDER=none)."""
+    for detector in (
+        _detect_upcoming_obligations,
+        _detect_loan_emi_summary,
+        _detect_affordability,
+        _detect_create_recurring_bill,
+    ):
+        result = detector(message)
+        if result:
+            return result
+    return None
+
+
+def _detect_import_statement(message: str) -> PlannerOutput | None:
+    lower = message.lower()
+    if not any(
+        phrase in lower
+        for phrase in (
+            "import statement",
+            "upload statement",
+            "import csv",
+            "import bank statement",
+            "upload csv",
+            "import pdf",
+        )
+    ):
+        return None
+    return PlannerOutput(
+        intent=Intent.import_statement,
+        steps=[],
+        ui_mode="guided_flow",
+    )
+
+
+def _slice3_keyword_route(message: str) -> PlannerOutput | None:
+    """Keyword fallbacks for Slice 3 intents (works with LLM_PROVIDER=none)."""
+    for detector in (
+        _detect_import_statement,
+    ):
+        result = detector(message)
+        if result:
+            return result
+    return None
+
+
 def clean_deepseek_args(raw_args: str) -> dict:
     import re
     # Remove <think>...</think> blocks common in reasoning models
@@ -397,6 +1093,15 @@ class CoordinatorAgent(BaseAgent):
 
         function_name = None
 
+        # S3.4 detectors must run before _detect_spending_period since "spend/spent" is a broad keyword
+        explain = _detect_explain_transaction(msg)
+        if explain:
+            return explain
+
+        recat = _detect_recategorize_transaction(msg)
+        if recat:
+            return recat
+
         spending_period = _detect_spending_period(msg)
         if spending_period:
             return PlannerOutput(
@@ -419,6 +1124,18 @@ class CoordinatorAgent(BaseAgent):
                 ui_mode="guided_flow",
             )
 
+        acct_guided = _detect_create_account_guided(msg)
+        if acct_guided:
+            return acct_guided
+
+        transfer = _detect_record_transfer(msg)
+        if transfer:
+            return transfer
+
+        recurring = _detect_create_recurring_bill(msg)
+        if recurring:
+            return recurring
+
         expense = _detect_add_expense(msg)
         if expense:
             return expense
@@ -426,6 +1143,29 @@ class CoordinatorAgent(BaseAgent):
         net_worth = _detect_net_worth(msg)
         if net_worth:
             return net_worth
+
+        slice1 = _slice1_keyword_route(msg)
+        if slice1:
+            return slice1
+
+        slice2 = _slice2_keyword_route(msg)
+        if slice2:
+            return slice2
+
+        slice3 = _slice3_keyword_route(msg)
+        if slice3:
+            return slice3
+
+        if get_llm_provider() == LLMProvider.none:
+            return PlannerOutput(
+                intent=Intent.unknown,
+                steps=[],
+                ui_mode="guided_flow",
+                message=(
+                    "I can help with expenses, net worth, spending, investments, or obligations. "
+                    "Try 'what's due this month?'"
+                ),
+            )
 
         # 1. Semantic Routing (Fast Intent Classification)
         if router:

@@ -32,6 +32,8 @@ from app.db.models import Account, ChatSession, ChatMessage
 _NEXT_ACTIONS = {
     Intent.add_expense: ["Confirm", "Cancel", "View this month's spending"],
     Intent.add_income: ["Confirm", "Cancel", "What's my net worth?"],
+    Intent.create_recurring_bill: ["Confirm", "Cancel", "What's due this month?"],
+    Intent.record_transfer: ["Confirm", "Cancel", "Did I pay my SIP this month?"],
     Intent.net_worth_query: ["Add an expense", "Spending breakdown", "Import statement"],
     Intent.spending_analysis: [
         "Pie chart for this month",
@@ -49,10 +51,19 @@ _NEXT_ACTIONS = {
     Intent.budget_vs_actual: ["Add an expense", "Spending breakdown"],
     Intent.project_future_balance: ["What's my net worth?", "Spending breakdown"],
     Intent.debt_payoff_planner: ["What's my net worth?", "Spending breakdown"],
-    Intent.investment_allocation: ["What's my net worth?", "Spending breakdown"],
+    Intent.investment_allocation: ["How are my investments?", "Show P&L", "SIP status"],
+    Intent.portfolio_summary: ["Show allocation", "Show P&L", "SIP status"],
+    Intent.portfolio_pnl_drilldown: ["How are my investments?", "Show allocation"],
+    Intent.sip_status_query: ["How are my investments?", "What's my net worth?"],
+    Intent.fd_maturity_query: ["How are my investments?", "What's my net worth?"],
+    Intent.upcoming_obligations: ["Loan EMI summary", "Can I afford a loan?", "SIP status"],
+    Intent.loan_emi_summary: ["What's due this month?", "Can I afford a loan?", "Spending breakdown"],
     Intent.vendor_spending_history: ["Spending breakdown", "What's my net worth?"],
     Intent.unusual_spending_alert: ["Spending breakdown", "What's my net worth?"],
     Intent.manage_accounts: ["List my accounts", "Add a bank account", "View transactions"],
+    Intent.explain_transaction: ["Recategorize this", "Spending breakdown", "View transactions"],
+    Intent.recategorize_transaction: ["Confirm", "Cancel", "View transactions"],
+    Intent.create_account_guided: ["Confirm", "Cancel", "List my accounts"],
 }
 
 
@@ -144,7 +155,7 @@ async def run(
                     ui_type="message_only",
                     card_payload={"message": e.message},
                 )
-                await _save_assistant_response(session, db_session_id, res, state)
+                await _save_assistant_response(session, db_session_id, res, state, user_id)
                 return res
             state.filled_slots.pop("pending_mutation", None)
             intent_val = pending.get("intent", Intent.add_expense.value)
@@ -162,7 +173,7 @@ async def run(
                 ui_type=ui_type,
                 card_payload=card_payload,
             )
-            await _save_assistant_response(session, db_session_id, res, state)
+            await _save_assistant_response(session, db_session_id, res, state, user_id)
             return res
         if is_reject_message(message):
             state.filled_slots.pop("pending_mutation", None)
@@ -175,7 +186,7 @@ async def run(
                 ui_type="message_only",
                 card_payload={"message": msg},
             )
-            await _save_assistant_response(session, db_session_id, res, state)
+            await _save_assistant_response(session, db_session_id, res, state, user_id)
             return res
 
     planner_output = await plan(message, state)
@@ -209,7 +220,7 @@ async def run(
                 ui_type="message_only",
                 card_payload={"message": msg},
             )
-            await _save_assistant_response(session, db_session_id, res, state)
+            await _save_assistant_response(session, db_session_id, res, state, user_id)
             return res
         except Exception as e:
             msg = f"An unexpected error occurred: {str(e)}"
@@ -221,20 +232,25 @@ async def run(
                 ui_type="message_only",
                 card_payload={"message": msg},
             )
-            await _save_assistant_response(session, db_session_id, res, state)
+            await _save_assistant_response(session, db_session_id, res, state, user_id)
             return res
 
         if last_result.get("preview") and step.action in MUTATION_ACTIONS:
+            params = {**step.params}
+            for key in (
+                "amount", "merchant", "category", "transaction_date", "account_id", "nw_impact",
+                "name", "frequency", "due_day", "weekday",
+                "legs", "from_account_id", "to_account_id", "investment_name",
+                "transaction_id", "new_category", "old_category",
+                "account_type", "name", "institution", "investment_mode", "emi_amount",
+                "tenure_months", "start_date", "loan_type", "opening_balance",
+                "credit_limit", "parent_account_id",
+            ):
+                if last_result.get(key) is not None:
+                    params[key] = last_result[key]
             state.filled_slots["pending_mutation"] = {
                 "action": propose_action_for(step.action),
-                "params": {
-                    "amount": last_result.get("amount"),
-                    "merchant": last_result.get("merchant"),
-                    "category": last_result.get("category"),
-                    "transaction_date": last_result.get("transaction_date"),
-                    "account_id": last_result.get("account_id"),
-                    "nw_impact": last_result.get("nw_impact"),
-                },
+                "params": params,
                 "intent": planner_output.intent.value,
             }
             ui_type, card_payload, chat_summary = build_ui_guide(planner_output.intent, last_result)
@@ -247,7 +263,7 @@ async def run(
                 ui_type=ui_type,
                 card_payload=card_payload,
             )
-            await _save_assistant_response(session, db_session_id, res, state)
+            await _save_assistant_response(session, db_session_id, res, state, user_id)
             return res
             
     # Phase 4: Generate LLM Insights if intent matches
@@ -269,7 +285,7 @@ async def run(
             ui_type=ui_type,
             card_payload=card_payload,
         )
-        await _save_assistant_response(session, db_session_id, res, state)
+        await _save_assistant_response(session, db_session_id, res, state, user_id)
         return res
         
     if planner_output.intent == Intent.import_statement:
@@ -283,7 +299,7 @@ async def run(
             ui_type=ui_type,
             card_payload=card_payload,
         )
-        await _save_assistant_response(session, db_session_id, res, state)
+        await _save_assistant_response(session, db_session_id, res, state, user_id)
         return res
 
     # Call UI Guide to enrich response with ui_type, card_payload, chat_summary
@@ -291,8 +307,15 @@ async def run(
     response_data = {"message": chat_summary, **last_result}
     
     from app.services.missing_data import check_missing_data
+    from app.core.suggested_actions import merge_suggested_actions
+
     hints = await check_missing_data(session, user_id)
-    suggested_actions = hints + _NEXT_ACTIONS.get(planner_output.intent, _NEXT_ACTIONS[Intent.unknown])
+    suggested_actions = merge_suggested_actions(
+        planner_output.intent,
+        last_result,
+        hints,
+        _NEXT_ACTIONS.get(planner_output.intent, _NEXT_ACTIONS[Intent.unknown]),
+    )
     
     res = AgentResponse(
         status="success",
@@ -302,11 +325,17 @@ async def run(
         ui_type=ui_type,
         card_payload=card_payload,
     )
-    await _save_assistant_response(session, db_session_id, res, state)
+    await _save_assistant_response(session, db_session_id, res, state, user_id)
     return res
 
 
-async def _save_assistant_response(session: AsyncSession, db_session_id: UUID, res: AgentResponse, state: ConversationState):
+async def _save_assistant_response(
+    session: AsyncSession,
+    db_session_id: UUID,
+    res: AgentResponse,
+    state: ConversationState,
+    user_id: UUID | None = None,
+):
     """Helper to save the final agent output to Postgres and Redis."""
     chat_summary = res.data.get("message", "Done.")
     
@@ -328,6 +357,14 @@ async def _save_assistant_response(session: AsyncSession, db_session_id: UUID, r
     # 2. Redis Save
     state.agent_history.append({"role": "assistant", "content": chat_summary})
     await set_state(str(db_session_id), state)
+
+    # 3. Post-session persona hook (S2.6) — must never break chat response
+    if user_id is not None:
+        try:
+            from app.services.persona_hook import run_persona_hook
+            await run_persona_hook(session, user_id, state.agent_history)
+        except Exception:
+            pass
 
 
 async def _get_default_account_id(session: AsyncSession, user_id: UUID) -> UUID | None:

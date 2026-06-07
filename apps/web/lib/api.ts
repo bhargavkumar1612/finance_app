@@ -335,6 +335,10 @@ export async function getAccounts(): Promise<Account[]> {
     return request<Account[]>('/v1/accounts');
 }
 
+export async function getProactiveHints(): Promise<{ hints: string[] }> {
+    return request<{ hints: string[] }>('/v1/hints');
+}
+
 export async function createAccount(data: CreateAccountRequest): Promise<Account> {
     return request<Account>('/v1/accounts', {
         method: 'POST',
@@ -432,5 +436,41 @@ export async function confirmImport(
     return request<ImportConfirmResponse>('/v1/import/confirm', {
         method: 'POST',
         body: JSON.stringify({ account_id: accountId, rows }),
+    });
+}
+
+export interface RecurringBillSuggestion {
+    bill_id: string;
+    name: string;
+    amount: number;
+    suggested_date: string;
+    reason?: string;
+}
+
+export interface RecurringSuggestionsResponse {
+    suggestions: RecurringBillSuggestion[];
+}
+
+export async function getRecurringSuggestions(): Promise<RecurringSuggestionsResponse> {
+    return request<RecurringSuggestionsResponse>('/v1/recurring-bills/suggestions');
+}
+
+export interface FinancialPersona {
+    body: string;
+    traits: Record<string, unknown>;
+    updated_at: string | null;
+}
+
+export async function getPersona(): Promise<FinancialPersona> {
+    return request<FinancialPersona>('/v1/persona');
+}
+
+export async function updatePersona(data: {
+    body?: string;
+    traits?: Record<string, unknown>;
+}): Promise<FinancialPersona> {
+    return request<FinancialPersona>('/v1/persona', {
+        method: 'PUT',
+        body: JSON.stringify(data),
     });
 }
