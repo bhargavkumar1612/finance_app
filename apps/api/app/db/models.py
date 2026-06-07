@@ -22,7 +22,6 @@ class User(Base):
     accounts: Mapped[list["Account"]] = relationship(back_populates="user")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
     assets: Mapped[list["Asset"]] = relationship(back_populates="user")
-    liabilities: Mapped[list["Liability"]] = relationship(back_populates="user")
     chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")
     recurring_bills: Mapped[list["RecurringBill"]] = relationship(back_populates="user")
 
@@ -32,14 +31,31 @@ class Account(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    account_type: Mapped[str] = mapped_column(Text, nullable=False)  # bank | credit_card | wallet | cash
+    account_type: Mapped[str] = mapped_column(Text, nullable=False)  # bank | credit_card | wallet | cash | loan | mutual_fund | epf | ...
     name: Mapped[str] = mapped_column(Text, nullable=False)
     institution: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    credit_limit: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)
+    loan_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # home | personal | vehicle | education | other
+    loan_type_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    credit_limit: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)  # credit_card only
+    sanctioned_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)  # loan only
+    interest_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    emi_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)
+    tenure_months: Mapped[Optional[int]] = mapped_column(nullable=True)
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    due_day: Mapped[Optional[int]] = mapped_column(nullable=True)
     currency: Mapped[str] = mapped_column(Text, nullable=False, default="INR")
     parent_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=True
     )
+    account_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # bank only
+    ifsc_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # bank only
+    branch: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # bank only
+    account_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # bank only
+    folio_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # MF/RD folio; EPF UAN
+    demat_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # stock
+    invested_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)  # holdings cost basis
+    current_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)  # holdings market value
+    investment_mode: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # mutual_fund: one_time | sip
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
@@ -113,21 +129,6 @@ class Asset(Base):
     valuation_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="assets")
-
-
-class Liability(Base):
-    __tablename__ = "liabilities"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    liability_type: Mapped[str] = mapped_column(Text, nullable=False)  # home_loan | personal_loan | cc
-    name: Mapped[str] = mapped_column(Text, nullable=False)
-    outstanding_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-    interest_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
-    emi: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)
-    due_day: Mapped[Optional[int]] = mapped_column(nullable=True)
-
-    user: Mapped["User"] = relationship(back_populates="liabilities")
 
 
 class ImportFingerprint(Base):

@@ -1,0 +1,15 @@
+.badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--type-color) 12%, transparent);
+    flex-shrink: 0;
+}
+
+[data-density="compact"] .badge {
+    width: 28px;
+    height: 28px;
+}

@@ -5,14 +5,15 @@ from uuid import UUID
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Transaction, Liability
+from app.db.models import Account, Transaction
+from app.services.account_types import LOAN_TYPES
 from app.services.spending import average_monthly_spending, income_filters
 
 
 async def calculate_affordability(session: AsyncSession, user_id: UUID) -> dict:
     """
     Affordability from income (nw_impact) and spending (nw_impact), not raw debits.
-    EMI burden from Liability rows only — no double-count with liability_payment txns.
+    EMI burden from loan account emi_amount rows — no double-count with liability_payment txns.
     """
     three_months_ago = date.today() - timedelta(days=90)
     today = date.today()
@@ -24,7 +25,11 @@ async def calculate_affordability(session: AsyncSession, user_id: UUID) -> dict:
 
     avg_monthly_spend = await average_monthly_spending(session, user_id, three_months_ago, today)
 
-    emi_q = select(func.sum(Liability.emi)).where(Liability.user_id == user_id)
+    emi_q = select(func.sum(Account.emi_amount)).where(
+        Account.user_id == user_id,
+        Account.account_type.in_(tuple(LOAN_TYPES)),
+        Account.emi_amount.isnot(None),
+    )
     emi_res = await session.execute(emi_q)
     total_existing_emi = float(emi_res.scalar_one_or_none() or Decimal(0))
 

@@ -4,7 +4,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Transaction, Liability, RecurringBill
+from app.db.models import Account, RecurringBill, Transaction
+from app.services.account_types import LOAN_TYPES
 from app.services.transaction_semantics import NwImpact
 
 
@@ -35,18 +36,23 @@ async def check_missing_data(session: AsyncSession, user_id: UUID) -> list[str]:
     if not (await session.execute(rent_q)).scalar_one_or_none():
         hints.append("Log your rent payment")
 
-    liability_q = select(Liability.name).where(Liability.user_id == user_id, Liability.emi > 0)
-    for liability_name in (await session.execute(liability_q)).scalars().all():
+    loan_q = select(Account.name).where(
+        Account.user_id == user_id,
+        Account.account_type.in_(tuple(LOAN_TYPES)),
+        Account.emi_amount.isnot(None),
+        Account.emi_amount > 0,
+    )
+    for loan_name in (await session.execute(loan_q)).scalars().all():
         emi_q = select(Transaction.id).where(
             Transaction.user_id == user_id,
             Transaction.transaction_date >= start_of_month,
             Transaction.nw_impact == NwImpact.liability_payment.value,
             (
-                Transaction.merchant.ilike(f"%{liability_name}%")
-                | Transaction.raw_description.ilike(f"%{liability_name}%")
+                Transaction.merchant.ilike(f"%{loan_name}%")
+                | Transaction.raw_description.ilike(f"%{loan_name}%")
             ),
         ).limit(1)
         if not (await session.execute(emi_q)).scalar_one_or_none():
-            hints.append(f"Log EMI for {liability_name}")
+            hints.append(f"Log EMI for {loan_name}")
 
     return hints[:2]

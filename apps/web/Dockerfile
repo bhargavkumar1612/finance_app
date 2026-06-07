@@ -12,10 +12,11 @@ FROM base AS dev
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN chmod +x scripts/entrypoint.sh
 ENV NODE_ENV=development
 ENV WATCHPACK_POLLING=true
 EXPOSE 3000
-CMD ["npm", "run", "dev"]
+ENTRYPOINT ["sh", "scripts/entrypoint.sh"]
 
 FROM base AS builder
 WORKDIR /app

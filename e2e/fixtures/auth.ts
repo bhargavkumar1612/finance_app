@@ -1,1 +1,15 @@
-export { loginViaUi, waitForChatReady, sendChatMessage, safeClick, createBankAccount, confirmChatExpense, rejectChatExpense } from './helpers';
+export {
+  loginViaUi,
+  waitForChatReady,
+  sendChatMessage,
+  safeClick,
+  openAppNav,
+  closeAppNav,
+  navigateViaSidebar,
+  logoutViaSidebar,
+  openChatSessions,
+  closeChatSessions,
+  createBankAccount,
+  confirmChatExpense,
+  rejectChatExpense,
+} from './helpers';

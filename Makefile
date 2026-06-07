@@ -1,4 +1,4 @@
-.PHONY: dev test-unit test-integration test-smoke test-e2e test-e2e-smoke
+.PHONY: dev test-unit test-integration test-smoke test-web-unit test-e2e test-e2e-smoke test-e2e-desktop test-e2e-mobile
 
 dev:
 	docker compose up
@@ -12,8 +12,17 @@ test-integration:
 test-smoke:
 	./scripts/test-in-docker.sh tests/smoke -q
 
+test-web-unit:
+	cd apps/web && npm test
+
 test-e2e:
 	cd e2e && npx playwright install --with-deps && npx playwright test
+
+test-e2e-desktop:
+	cd e2e && npx playwright test --project=desktop-chromium
+
+test-e2e-mobile:
+	cd e2e && npx playwright test --project=mobile-chrome
 
 test-e2e-smoke:
 	cd e2e && npx playwright test --grep @smoke

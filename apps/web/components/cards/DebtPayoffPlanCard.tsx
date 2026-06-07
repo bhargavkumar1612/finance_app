@@ -26,7 +26,7 @@ export default function DebtPayoffPlanCard({ payload }: { payload: Record<string
             <div className={styles.row}>
                 <div style={{ flex: 1 }}>
                     <div className={styles.label}>Total Debt</div>
-                    <div className={styles.value} style={{ color: '#ef4444' }}>₹{data.total_debt?.toLocaleString()}</div>
+                    <div className={`${styles.value} amount-liability`}>₹{data.total_debt?.toLocaleString()}</div>
                 </div>
                 <div style={{ flex: 1 }}>
                     <div className={styles.label}>Est. Time</div>

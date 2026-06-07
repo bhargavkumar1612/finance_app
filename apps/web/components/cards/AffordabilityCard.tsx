@@ -1,3 +1,5 @@
+import { Calculator } from 'lucide-react';
+import AppIcon from '@/components/icons/AppIcon';
 import styles from './Card.module.css';
 
 interface Props {
@@ -7,10 +9,10 @@ interface Props {
 }
 
 const RISK_META = {
-    low: { label: 'Low Risk', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' },
-    medium: { label: 'Medium Risk', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
-    high: { label: 'High Risk', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)' },
-    unknown: { label: 'Unknown', color: '#6b7280', bg: 'rgba(107, 114, 128, 0.12)' },
+    low: { label: 'Low Risk', colorVar: 'var(--success)' },
+    medium: { label: 'Medium Risk', colorVar: 'var(--warning)' },
+    high: { label: 'High Risk', colorVar: 'var(--danger)' },
+    unknown: { label: 'Unknown', colorVar: 'var(--text-muted)' },
 };
 
 export default function AffordabilityCard({ payload }: Props) {
@@ -24,24 +26,36 @@ export default function AffordabilityCard({ payload }: Props) {
     return (
         <div className={`${styles.card} ${styles.affordCard} fade-up`}>
             <div className={styles.cardHeader}>
-                <span className={styles.cardIcon}>🧮</span>
+                <span className={styles.cardIcon}>
+                    <AppIcon icon={Calculator} size={18} color="var(--accent)" />
+                </span>
                 <span className={styles.cardTitle}>Affordability Check</span>
             </div>
             <div className={styles.affordEmi}>
                 ₹{safeEmi.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 <span className={styles.affordEmiLabel}>/month safe EMI</span>
             </div>
-            <div className={styles.affordRisk} style={{ background: meta.bg, borderColor: meta.color + '33' }}>
-                <span style={{ color: meta.color, fontWeight: 600 }}>{meta.label}</span>
+            <div
+                className={styles.affordRisk}
+                style={{
+                    background: `color-mix(in srgb, ${meta.colorVar} 12%, transparent)`,
+                    borderColor: `color-mix(in srgb, ${meta.colorVar} 20%, transparent)`,
+                }}
+            >
+                <span style={{ color: meta.colorVar, fontWeight: 600 }}>{meta.label}</span>
             </div>
             <div className={styles.affordStats}>
                 <div className={styles.affordStat}>
                     <span className={styles.affordStatLabel}>Net Worth</span>
-                    <span className={styles.affordStatValue}>₹{netWorth.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                    <span className={`${styles.affordStatValue} amount-asset`}>
+                        ₹{netWorth.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                    </span>
                 </div>
                 <div className={styles.affordStat}>
                     <span className={styles.affordStatLabel}>Monthly Spend</span>
-                    <span className={styles.affordStatValue}>₹{monthlySpend.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                    <span className={`${styles.affordStatValue} amount-liability`}>
+                        ₹{monthlySpend.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                    </span>
                 </div>
             </div>
             {message && <p className={styles.affordMessage}>{message}</p>}

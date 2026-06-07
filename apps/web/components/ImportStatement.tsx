@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import { uploadImport, confirmImport, type NormalizedRow } from '@/lib/api';
+import AppIcon from '@/components/icons/AppIcon';
 import styles from '@/app/import/Import.module.css';
 
 type RowState = NormalizedRow & { selected: boolean };
@@ -237,7 +239,9 @@ export default function ImportStatement({ onClose, onImported, compact }: Import
 
             {stage === 'done' && result && (
                 <div className={`card ${styles.doneCard}`}>
-                    <div className={styles.doneIcon}>✓</div>
+                    <div className={styles.doneIcon}>
+                        <AppIcon icon={CheckCircle2} size={32} color="var(--success)" />
+                    </div>
                     <h2 className={styles.doneTitle}>
                         {result.inserted > 0 ? 'Import complete!' : 'Nothing new to import'}
                     </h2>

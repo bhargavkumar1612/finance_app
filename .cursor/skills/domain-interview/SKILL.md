@@ -117,3 +117,4 @@ After the answer, record under `### Spending` in `DOMAIN_GLOSSARY.md` with links
 - Question categories: [question-bank.md](question-bank.md)
 - Glossary entry format: [entry-template.md](entry-template.md)
 - Architecture (read-only context): [docs/AI_PRINCIPLES.md](../../../docs/AI_PRINCIPLES.md)
+- Incoming agents without chat history: [handoff skill](../handoff/SKILL.md)

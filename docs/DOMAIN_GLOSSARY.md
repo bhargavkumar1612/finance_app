@@ -63,40 +63,43 @@ Shared language between the project owner, documentation, and code. Agents shoul
 
 **Canonical in code:** `Account` with `account_type` `bank` or `cash`
 
-**Not the same as:** **Derived account** — credit cards and online wallets are not primary.
+**Cash UI:** Do **not** show institution field for `cash` — name alone is enough (e.g. "Home safe", "Petty cash" goes in `name`).
+
+**Not the same as:** **Derived account** — credit cards, wallets, loans, and investments are not primary.
 
 **Related code:**
 - `app/db/models.py` (`Account`)
 - `app/api/accounts.py`
 - `frontend/app/accounts/page.tsx`
 
-**Decided on:** 2026-06-06
+**Decided on:** 2026-06-06 (Round 5 — cash institution hidden in UI)
 
 ---
 
 ### Derived account
 
-**Definition:** A credit card or online wallet (e.g. Paytm) that is always connected to a primary bank account and refilled or paid from that bank. Not a standalone source of cash.
+**Definition:** A credit card, online wallet, **loan**, or **investment** account that tracks liability, app-wallet cash, or holdings separately from primary bank/cash. Credit cards, loans, and investments require a linked bank; online wallets may optionally link to a bank.
 
-**Synonyms (avoid in code/UI):** treating wallets as independent cash pools unrelated to a bank
+**Synonyms (avoid in code/UI):** treating all derived accounts as requiring the same parent rules
 
-**Canonical in code:** `Account` with `account_type` `credit_card` or `wallet`, `parent_account_id` → primary `bank`/`cash`
+**Canonical in code:** `Account` with `account_type` in `credit_card`, `wallet`, `loan`, or investment types; `parent_account_id` → primary `bank`/`cash` (required for credit_card, loan, investments; optional for wallet)
 
-**Example:** HDFC credit card paid via `BILLPAY-CREDIT CARD HDFC` from HDFC savings.
+**Example:** HDFC credit card paid via `BILLPAY-CREDIT CARD HDFC` from HDFC savings; PhonePe wallet used standalone or topped up from HDFC savings; Parag Parikh MF linked to HDFC with SIP transfers.
 
 **Not the same as:** **Primary account**
 
 **Related code:**
-- `app/db/models.py` (`Account.account_type`)
+- `app/db/models.py` (`Account.account_type`, `Account.parent_account_id`)
 - `app/api/accounts.py`
+- `app/services/account_types.py`
 
-**Decided on:** 2026-06-06
+**Decided on:** 2026-06-06 (updated Round 5 — investments included)
 
 ---
 
 ### Account (UI label)
 
-**Definition:** User-facing nav and page title for all account types (primary and derived). Keep **"Accounts"** in sidebar and chat; use type-specific labels in detail views when helpful ("Bank", "Credit card", "Wallet", "Cash").
+**Definition:** User-facing nav and page title for all account types (primary and derived). Keep **"Accounts"** in sidebar and chat; use type-specific labels in detail views when helpful ("Bank", "Credit card", "Online wallet", "Cash").
 
 **Synonyms (avoid in code/UI):** renaming the nav to "Wallets" only
 
@@ -107,6 +110,61 @@ Shared language between the project owner, documentation, and code. Agents shoul
 - `app/api/accounts.py`
 
 **Decided on:** 2026-06-06
+
+---
+
+### Online wallet (UI label)
+
+**Definition:** An online wallet for UPI / app balances (PhonePe, Amazon Pay, Flipkart Pay, etc.). Can be tracked standalone or optionally linked to a primary bank for top-ups and payouts.
+
+**Synonyms (avoid in code/UI):** bare "Wallet" in UI (ambiguous with physical wallet)
+
+**Canonical in code:** `Account.account_type` = `wallet`; UI label **"Online wallet"**; provider in `institution` (e.g. PhonePe); `parent_account_id` optional
+
+**Not the same as:** **Primary account** — online wallets are a separate derived type, not bank/cash
+
+**Related code:**
+- `app/services/account_types.py` (`DERIVED_TYPES`, `PARENT_LINKABLE_TYPES`)
+- `frontend/lib/accountDisplay.ts`
+- `frontend/app/accounts/page.tsx`
+
+**Decided on:** 2026-06-06
+
+---
+
+### Bank account details (optional)
+
+**Definition:** Optional metadata on **bank** accounts only — account number, IFSC, branch, and free-text notes (e.g. joint account, salary account).
+
+**Synonyms (avoid in code/UI):** storing IFSC on cash or credit card accounts
+
+**Canonical in code:** `Account.account_number`, `Account.ifsc_code`, `Account.branch`, `Account.account_notes` (all nullable; bank only)
+
+**Related code:**
+- `app/services/bank_account_details.py`
+- `app/api/accounts.py`
+- `frontend/app/accounts/page.tsx`
+
+**Decided on:** 2026-06-06
+
+---
+
+### Opening balance
+
+**Definition:** Optional starting value when onboarding mid-cycle — before imports or manual transactions. Applies to **primary** accounts (`bank`, `cash`) and **investment** accounts (seed holdings value).
+
+**Synonyms (avoid in code/UI):** storing balance on `Account` row without a transaction
+
+**Canonical in code:** Single `Transaction` with `source=opening_balance`, positive amount, `merchant="Opening balance"`, `category="Transfer"`, `nw_impact=transfer`
+
+**Not the same as:** **Income** — opening balance counts toward account balance/holdings and net worth but not spending/income reports
+
+**Related code:**
+- `app/services/opening_balance.py`
+- `app/services/account_types.py` (`OPENING_BALANCE_TYPES`)
+- `app/api/accounts.py`
+
+**Decided on:** 2026-06-06 (updated Round 5 — investments included)
 
 ---
 
@@ -195,11 +253,12 @@ Shared language between the project owner, documentation, and code. Agents shoul
 
 **Synonyms (avoid in code/UI):** "account balance total" as a substitute unless assets/liabilities are fully represented
 
-**Canonical in code:** `_compute_net_worth`, `Intent.net_worth_query`, `Asset`, `Liability`
+**Canonical in code:** `_compute_net_worth`, `Intent.net_worth_query`, `Asset`, loan `Account`
 
 **Related code:**
 - `app/agents/ledger_agent.py` (`_compute_net_worth`)
-- `app/db/models.py` (`Asset`, `Liability`)
+- `app/db/models.py` (`Asset`, `Account`)
+- `app/services/net_worth.py`
 
 **Decided on:** 2026-06-06
 
@@ -282,24 +341,174 @@ Shared language between the project owner, documentation, and code. Agents shoul
 
 **Definition:** For a linked `credit_card` account, outstanding owed = sum of `spending` amounts on that account minus `liability_payment` credits allocated to that card (from bank BILLPAY or CC-side payments).
 
-**Hybrid net worth:** Primary bank/cash balance (txn sum) + manual `Asset` − CC outstanding − manual `Liability`.
+**Hybrid net worth:** Primary bank/cash balance (txn sum) + investment holdings + manual `Asset` − CC outstanding − loan outstanding (from loan accounts).
 
 **Related code:**
 - `app/services/net_worth.py`
 - `Account.parent_account_id`
 
-**Decided on:** 2026-06-06 (Round 2B)
+**Decided on:** 2026-06-06 (Round 2B; Round 3 — manual Liability table merged into loan accounts)
 
 ---
 
-### Derived account linking (Round 2B)
+### Initial credit used (credit card)
+
+**Definition:** Optional starting liability when onboarding a credit card mid-cycle — the amount already owed before imports or manual transactions. User sets an **as-of date** (e.g. last statement date).
+
+**Synonyms (avoid in code/UI):** storing outstanding on the `Account` row without a transaction; “opening balance” on a liability account
+
+**Canonical in code:** Single seed `Transaction` with `source=initial_credit_used`, negative amount, `merchant="Initial credit used"`, `nw_impact=spending`, user-chosen `transaction_date`. API fields: `initial_credit_used`, `initial_credit_used_date` on create/update (credit_card only).
+
+**Spending reports:** Counts as **spending** (same `nw_impact` as real charges) — owner decision Round 6.
+
+**Not the same as:** **Credit limit** — limit is capacity, not debt. **Loan initial outstanding** — deferred; loans use disbursement transactions.
+
+**Related code:**
+- `app/services/initial_credit_used.py`
+- `app/services/account_balances.py` (`liability_outstanding`)
+- `app/api/accounts.py`
+- `frontend/app/accounts/page.tsx` (`#acc-initial-used`, `#acc-initial-used-date`)
+
+**Decided on:** 2026-06-06 (Round 6 — domain interview)
+
+---
+
+### Loan account (derived)
+
+**Definition:** A loan tracked as a derived `Account` (`account_type=loan`) linked to a primary bank. Liability exists from disbursement (not from unused sanctioned amount). Shows sanctioned total, outstanding, amount paid, EMI schedule, and payment history.
+
+**Synonyms (avoid in code/UI):** separate `/v1/liabilities` rows for the same loan (deprecated)
+
+**Canonical in code:** `Account` with `account_type=loan`, `sanctioned_amount`, `emi_amount`, `tenure_months`, `start_date`, `loan_type`, optional `loan_type_description` when `loan_type=other`
+
+**Start date:** **Required** on the loan form when `emi_amount` and `tenure_months` are set. Used for reference and future schedule features; EMI counts today remain transaction-based.
+
+**loan_type values:** `home` | `personal` | `vehicle` | `education` | `other` (with free-text description)
+
+**Liability timing:** Loan outstanding is zero until disbursement, **or** set via **initial EMIs paid** (sanctioned − EMI × paid months).
+
+**Disbursement:** Bank credit + loan-account spending (dual-sided). Bank side may classify as `transfer` or `income` by narration.
+
+**EMI payments:** Record on the loan account as `liability_payment` (positive amount). Bank-side EMI debits remain `liability_payment` on bank; mirror to loan account when tracking schedule.
+
+**Initial EMIs paid:** Optional `initial_emi_paid_count` on loan create/edit (`#acc-initial-emi-paid`). Seeds full sanctioned disbursement plus pre-paid EMIs; **outstanding = sanctioned − (EMI × paid months)**. Requires `sanctioned_amount`; requires `emi_amount` when count &gt; 0.
+
+**Related code:**
+- `app/services/account_balances.py`
+- `app/services/loan_schedule.py`
+- `app/services/initial_loan_state.py`
+- `app/api/accounts.py`
+
+**Decided on:** 2026-06-06 (Round 3; Round 5 — start_date required with EMI + tenure)
+
+---
+
+### Investment account (derived)
+
+**Definition:** A liquid investment tracked as a derived `Account` linked to a primary bank. Value = sum of transactions on the investment account (including optional `opening_balance` seed txn). Purchases from bank are `nw_impact=transfer` (not spending).
+
+**Types:** `mutual_fund` | `fixed_deposit` | `recurring_deposit` | `stock`. **SIP** uses `mutual_fund` with `investment_mode=sip` (not a separate account type).
+
+**Synonyms (avoid in code/UI):** legacy `/v1/assets` rows for mf/stock (kept for backward compatibility only)
+
+**Canonical in code:** `Account` with `account_type` in investment types; **required** `parent_account_id` → primary `bank`/`cash`; optional `opening_balance` on create/edit; optional stored `invested_amount` (cost basis) and `current_value` (market value) with computed `pnl_amount` / `pnl_percent`; optional `folio_number` (MF, RD) or `demat_id` (stock) for reference only; FD/RD reuse `start_date`, `tenure_months`, `interest_rate`; **MF SIP** uses `investment_mode` (`one_time` | `sip`), reuses `emi_amount` (monthly SIP), `due_day`, `start_date`, optional `tenure_months`, and tracks installments via transfer transactions + `payment_history`
+
+**UI label:** Show **Invested ₹X · Current ₹Y · P&L ±Z%** — investments are not spendable cash. Net-worth and hero totals use **current value** when set.
+
+**Net worth:** Investment **current values** roll into `investment_holdings` (separate from cash/wallet in breakdown).
+
+**Not the same as:** **Physical asset** (`property`, `gold`) — those stay on the `Asset` table with manual `current_value`.
+
+**Related code:**
+- `app/services/account_types.py` (`INVESTMENT_TYPES`, `OPENING_BALANCE_TYPES`)
+- `app/services/opening_balance.py`
+- `app/services/net_worth.py`
+- `app/services/transaction_semantics.py`
+- `frontend/lib/accountDisplay.ts`
+
+**Decided on:** 2026-06-06 (Phase 2; Round 5 — folio/demat fields; 2026-06-07 — invested/current/P&L)
+
+---
+
+### EPF account (standalone asset)
+
+**Definition:** Employee Provident Fund — employer-managed retirement corpus tracked as a standalone `Account` (`account_type=epf`). No linked bank required. Value = transaction sum + optional `opening_balance` seed (same as other holdings).
+
+**Canonical in code:** `Account.account_type` = `epf`; optional `institution` (employer name); optional `folio_number` stores **UAN**; optional `opening_balance`; appears under **Assets → Investments** in UI.
+
+**UI label:** **Invested / Current / P&L** (not spendable cash). Reference line shows masked **UAN**.
+
+**Net worth:** EPF balance rolls into `investment_holdings`.
+
+**Not the same as:** Liquid investment accounts (MF/FD/stock) — EPF does not require `parent_account_id`.
+
+**Related code:**
+- `app/services/account_types.py` (`RETIREMENT_TYPES`, `HOLDINGS_TYPES`)
+- `frontend/lib/accountDisplay.ts` (`usesUanField`, `isInvestmentType`)
+
+**Decided on:** 2026-06-06
+
+---
+
+### Derived account linking (Round 2B, updated Round 3)
 
 **Rules:**
-- `credit_card` and `wallet` **require** `parent_account_id` pointing to a `bank` or `cash` account.
-- **One parent per derived account** (many derived accounts may share one bank).
+- `credit_card`, **`loan`**, and **liquid investment accounts** (`mutual_fund`, `fixed_deposit`, `recurring_deposit`, `stock`) **require** `parent_account_id` pointing to a `bank` or `cash` account.
+- **`epf`** is standalone — no `parent_account_id` required.
+- **`wallet` (online wallet)** may be standalone; `parent_account_id` is **optional** when the user wants to track bank affiliation (e.g. PhonePe linked to HDFC).
+- **One parent per derived account** when linked (many derived accounts may share one bank).
 - CC statement imports target the derived CC account; bank BILLPAY targets the primary bank.
+- Loan EMIs and disbursements are affiliated with the linked bank account when set.
 
-**Decided on:** 2026-06-06 (Round 2B)
+**Decided on:** 2026-06-06 (Round 2B; Round 3 — loan; Round 5 — investments)
+
+**Definition:** For `fixed_deposit` and `recurring_deposit`, save `start_date`, `tenure_months`, and `interest_rate` on the Account. The card shows these planning fields plus a **computed maturity date** (start + tenure months). Principal/value still comes from transaction sum + optional opening balance.
+
+**Synonyms (avoid in code/UI):** storing maturity date as a separate DB column when it can be derived
+
+**Canonical in code:** `Account.start_date`, `Account.tenure_months`, `Account.interest_rate`; maturity computed in UI/display layer
+
+**Not the same as:** **Loan EMI schedule** — FD/RD maturity is informational; no auto-generated EMI txns from these fields alone
+
+**Related code:**
+- `app/api/accounts.py`
+- `frontend/lib/accountDisplay.ts`
+- `frontend/app/accounts/page.tsx`
+
+**Decided on:** 2026-06-06 (Round 5)
+
+---
+
+### Investment reference IDs (folio / demat)
+
+**Definition:** Optional reference metadata on investment accounts — not used in balance math. **folio_number** on `mutual_fund` and `recurring_deposit`; **demat_id** on `stock`. Reference only; no units, NAV, or holdings breakdown yet.
+
+**Synonyms (avoid in code/UI):** mixing folio and demat into one ambiguous "account number" field
+
+**Canonical in code:** `Account.folio_number` (MF, RD); `Account.demat_id` (stock) — new columns; validated type-gated like bank details
+
+**Related code:**
+- `app/db/models.py`
+- `app/api/accounts.py`
+- `frontend/app/accounts/page.tsx`
+
+**Decided on:** 2026-06-06 (Round 5)
+
+---
+
+### Credit card statement due day
+
+**Definition:** Optional day-of-month (1–31) for when the credit card bill is due. Saved on the `Account` row (`due_day`). Intended to link to **recurring bill** reminders in a later slice — not auto-created on save.
+
+**Synonyms (avoid in code/UI):** reusing loan EMI due day semantics on CC without labeling it as statement due
+
+**Canonical in code:** `Account.due_day` on `credit_card` only (cleared on other types)
+
+**Related code:**
+- `app/api/accounts.py`
+- `app/db/models.py` (`RecurringBill` — future link)
+
+**Decided on:** 2026-06-06 (Round 2B; Round 3 — loan; Round 5 — investments)
 
 ---
 
@@ -316,3 +525,99 @@ Shared language between the project owner, documentation, and code. Agents shoul
 | "import statement" | `import_statement` |
 
 **Decided on:** 2026-06-06 (Round 4 — recorded during implementation)
+
+---
+
+## Look and feel (UI)
+
+### Theme pack
+
+**Definition:** A full visual palette — background, surfaces, accent, semantic colors, chart colors, and account-type colors together. User selects one pack on the Settings page; choice persists in `localStorage` (`fc_prefs`).
+
+**Values:** `paper` (light default) | `midnight` | `coral` | `slate`
+
+**Synonyms (avoid in code/UI):** "dark mode toggle only" when referring to full packs
+
+**Canonical in code:** `data-theme` on `<html>`, [`apps/web/app/themes.css`](apps/web/app/themes.css), [`apps/web/lib/themes/packs.ts`](apps/web/lib/themes/packs.ts)
+
+**Related code:**
+- `apps/web/lib/ThemeContext.tsx`
+- `apps/web/app/settings/page.tsx`
+
+**Decided on:** 2026-06-07 (Round 7)
+
+---
+
+### Density
+
+**Definition:** Layout spacing preset — **comfortable** (default) or **compact**. Affects card padding, nav item height, page padding, and base font size.
+
+**Canonical in code:** `data-density` on `<html>`, overrides in [`apps/web/app/themes.css`](apps/web/app/themes.css)
+
+**Related code:**
+- `apps/web/lib/ThemeContext.tsx`
+- `apps/web/app/settings/page.tsx`
+
+**Decided on:** 2026-06-07 (Round 7)
+
+---
+
+### Typography (font family and size)
+
+**Definition:** User-controlled text appearance. **Theme default** mode applies a curated font per theme pack; **Custom** mode keeps the user's chosen font across theme changes. Text size is independent (`small` | `medium` | `large`).
+
+**Theme default fonts:**
+
+| Theme pack | Default font |
+|------------|--------------|
+| `paper` | DM Sans |
+| `midnight` | Geist |
+| `coral` | Lora |
+| `slate` | Inter |
+
+**Custom font catalog:** Geist, Inter, DM Sans, Lora, Source Serif, JetBrains Mono
+
+**Canonical in code:** `data-font`, `data-font-size`, `data-font-mode` on `<html>`, [`apps/web/lib/themes/fonts.ts`](apps/web/lib/themes/fonts.ts)
+
+**Related code:**
+- `apps/web/lib/ThemeContext.tsx`
+- `apps/web/app/settings/page.tsx`
+- `apps/web/app/themes.css` (font size scale)
+
+**Decided on:** 2026-06-07 (Round 7 typography)
+
+---
+
+### Semantic amount colors
+
+**Definition:** UI color rules for money display — not bank debit/credit semantics.
+
+| Meaning | Color token | CSS class |
+|---------|-------------|-----------|
+| Asset / net worth up | `--success` (green) | `.amount-asset` |
+| Liability / owed | `--danger` (red) | `.amount-liability` |
+| Neutral (transfers, etc.) | `--neutral` (blue) | `.amount-neutral` |
+
+**Synonyms (avoid in code/UI):** hard-coded `#10b981` / `#ef4444` in components
+
+**Related code:**
+- `apps/web/app/globals.css`
+- Chat cards, accounts page, transactions
+
+**Decided on:** 2026-06-07 (Round 7)
+
+---
+
+### Account type icon
+
+**Definition:** Fixed Lucide icon + color per `AccountType` (and loan subtype). Rendered via `AccountTypeIcon` — no emoji.
+
+**Synonyms (avoid in code/UI):** emoji symbols, `accountTypeSymbol()`
+
+**Canonical in code:** `AccountTypeIcon`, [`apps/web/lib/themes/accountTypes.ts`](apps/web/lib/themes/accountTypes.ts)
+
+**Related code:**
+- `apps/web/app/accounts/page.tsx`
+- `apps/web/components/cards/AccountListCard.tsx`
+
+**Decided on:** 2026-06-07 (Round 7)

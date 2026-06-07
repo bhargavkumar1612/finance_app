@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginViaUi, rejectChatExpense, safeClick, sendChatMessage } from '../../fixtures/helpers';
+import { loginViaUi, navigateViaSidebar, rejectChatExpense, safeClick, sendChatMessage } from '../../fixtures/helpers';
 
 test.describe('@regression chat confirm', () => {
   test('REG-C001 REG-C002: expense preview then confirm saves to ledger', async ({ page }) => {
@@ -11,7 +11,7 @@ test.describe('@regression chat confirm', () => {
     await safeClick(page, page.locator('button.btn-success').filter({ hasText: 'Confirm' }));
     await expect(page.getByText('Saved')).toBeVisible({ timeout: 30_000 });
 
-    await page.getByRole('link', { name: 'Transactions' }).click();
+    await navigateViaSidebar(page, 'Transactions');
     await expect(page.getByRole('heading', { name: 'Transactions' })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('table tbody').getByText('Swiggy')).toBeVisible({ timeout: 15_000 });
   });
@@ -20,7 +20,7 @@ test.describe('@regression chat confirm', () => {
     await loginViaUi(page, `chat-cancel-${Date.now()}@local.test`);
     await rejectChatExpense(page, 'add 999 for test cancel coffee');
 
-    await page.getByRole('link', { name: 'Transactions' }).click();
+    await navigateViaSidebar(page, 'Transactions');
     await expect(page.getByRole('heading', { name: 'Transactions' })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('table tbody').getByText(/test cancel coffee/i)).toHaveCount(0);
   });

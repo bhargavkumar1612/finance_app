@@ -112,13 +112,18 @@ With Docker stack running (`docker compose up`):
 make test-unit          # apps/api/tests/unit — no DB for most tests
 make test-integration   # API integration tests (Postgres + Redis)
 make test-smoke         # health endpoint
+make test-web-unit      # apps/web Vitest — theme/settings unit + integration
 ./scripts/test-in-docker.sh   # all API tests in container
 
 # Playwright e2e (UI + API via :3000)
 cd e2e && npm install && npx playwright install chromium
-make test-e2e           # all specs
-make test-e2e-smoke     # @smoke tag only
+make test-e2e           # all specs — desktop-chromium + mobile-chrome matrix
+make test-e2e-desktop     # desktop viewport only
+make test-e2e-mobile      # mobile viewport only (Pixel 5)
+make test-e2e-smoke       # @smoke tag only
 ```
+
+Mobile layout uses a **768px** breakpoint: app nav and chat sessions are drawer panes below that width. E2E helpers (`navigateViaSidebar`, `openAppNav`, etc.) live in `e2e/fixtures/helpers.ts`.
 
 See [docs/REGRESSION_TEST_PLAN.md](docs/REGRESSION_TEST_PLAN.md) for scenario IDs.
 

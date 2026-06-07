@@ -25,11 +25,11 @@ export default function CashFlowSummaryCard({ payload }: { payload: Record<strin
             <div className={styles.row}>
                 <div style={{ flex: 1 }}>
                     <div className={styles.label}>Income</div>
-                    <div className={styles.value} style={{ color: '#10b981' }}>₹{data.total_income?.toLocaleString()}</div>
+                    <div className={`${styles.value} amount-asset`}>₹{data.total_income?.toLocaleString()}</div>
                 </div>
                 <div style={{ flex: 1 }}>
                     <div className={styles.label}>Expenses</div>
-                    <div className={styles.value} style={{ color: '#ef4444' }}>₹{data.total_expense?.toLocaleString()}</div>
+                    <div className={`${styles.value} amount-liability`}>₹{data.total_expense?.toLocaleString()}</div>
                 </div>
             </div>
 
@@ -38,7 +38,7 @@ export default function CashFlowSummaryCard({ payload }: { payload: Record<strin
             <div className={styles.row}>
                 <div style={{ flex: 1 }}>
                     <div className={styles.label}>Net Cash Flow</div>
-                    <div className={styles.value} style={{ color: isPositive ? '#10b981' : '#ef4444' }}>
+                    <div className={`${styles.value} ${isPositive ? 'amount-asset' : 'amount-liability'}`}>
                         {isPositive ? '+' : '-'}₹{Math.abs(data.net_cash_flow).toLocaleString()}
                     </div>
                 </div>

@@ -1,0 +1,237 @@
+/* Shared structural tokens (not theme-specific) */
+:root {
+  --layout-mobile-max: 767px;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+
+  /* Spacing — comfortable default */
+  --space-unit: 1rem;
+  --card-padding: 20px;
+  --nav-item-height: 44px;
+  --page-padding: 24px;
+  --font-size-base: 15px;
+  --font-size-scale: 1;
+}
+
+/* ── Paper (default light) ── */
+:root,
+[data-theme="paper"] {
+  --bg-base: #f7f5f2;
+  --bg-surface: #ffffff;
+  --bg-elevated: #faf9f7;
+  --bg-hover: #f0eeea;
+  --bg-input: #f5f4f2;
+  --border: #e8e4df;
+  --border-light: #d4cfc8;
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-muted: #eef2ff;
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --neutral: #2563eb;
+  --text-primary: #1a1a2e;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --glow: 0 0 20px rgba(79, 70, 229, 0.12);
+  --chart-1: #4f46e5;
+  --chart-2: #059669;
+  --chart-3: #d97706;
+  --chart-4: #dc2626;
+  --chart-5: #7c3aed;
+  --chart-6: #0891b2;
+  --chart-7: #db2777;
+  --chart-8: #65a30d;
+  --chart-9: #ea580c;
+  --chart-10: #64748b;
+  --type-bank: #2563eb;
+  --type-cash: #059669;
+  --type-credit-card: #7c3aed;
+  --type-wallet: #0891b2;
+  --type-loan: #ea580c;
+  --type-investment: #059669;
+  --type-fd: #6366f1;
+  --type-rd: #0891b2;
+  --type-stock: #2563eb;
+}
+
+/* ── Midnight (dark) ── */
+[data-theme="midnight"] {
+  --bg-base: #0a0a0f;
+  --bg-surface: #111118;
+  --bg-elevated: #18181f;
+  --bg-hover: #1e1e28;
+  --bg-input: rgba(0, 0, 0, 0.2);
+  --border: #2a2a38;
+  --border-light: #3a3a4a;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --accent-muted: #312e81;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --neutral: #3b82f6;
+  --text-primary: #f1f1f5;
+  --text-secondary: #9999b8;
+  --text-muted: #5c5c78;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --glow: 0 0 20px rgba(99, 102, 241, 0.15);
+  --chart-1: #6366f1;
+  --chart-2: #10b981;
+  --chart-3: #f59e0b;
+  --chart-4: #ef4444;
+  --chart-5: #8b5cf6;
+  --chart-6: #06b6d4;
+  --chart-7: #ec4899;
+  --chart-8: #84cc16;
+  --chart-9: #f97316;
+  --chart-10: #64748b;
+  --type-bank: #3b82f6;
+  --type-cash: #10b981;
+  --type-credit-card: #a78bfa;
+  --type-wallet: #22d3ee;
+  --type-loan: #fb923c;
+  --type-investment: #34d399;
+  --type-fd: #818cf8;
+  --type-rd: #22d3ee;
+  --type-stock: #60a5fa;
+}
+
+/* ── Coral (light warm) ── */
+[data-theme="coral"] {
+  --bg-base: #faf8f6;
+  --bg-surface: #ffffff;
+  --bg-elevated: #fdf9f7;
+  --bg-hover: #f5f0ec;
+  --bg-input: #f7f3f0;
+  --border: #ede4de;
+  --border-light: #d9cfc7;
+  --border-subtle: rgba(0, 0, 0, 0.07);
+  --accent: #e85d4c;
+  --accent-hover: #d44a3a;
+  --accent-muted: #fef2f0;
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --neutral: #2563eb;
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+  --text-muted: #a8a29e;
+  --shadow: 0 4px 24px rgba(232, 93, 76, 0.08);
+  --glow: 0 0 20px rgba(232, 93, 76, 0.12);
+  --chart-1: #e85d4c;
+  --chart-2: #059669;
+  --chart-3: #d97706;
+  --chart-4: #dc2626;
+  --chart-5: #9333ea;
+  --chart-6: #0891b2;
+  --chart-7: #db2777;
+  --chart-8: #65a30d;
+  --chart-9: #ea580c;
+  --chart-10: #78716c;
+  --type-bank: #2563eb;
+  --type-cash: #059669;
+  --type-credit-card: #9333ea;
+  --type-wallet: #0891b2;
+  --type-loan: #ea580c;
+  --type-investment: #059669;
+  --type-fd: #e85d4c;
+  --type-rd: #0891b2;
+  --type-stock: #2563eb;
+}
+
+/* ── Slate (cool dark) ── */
+[data-theme="slate"] {
+  --bg-base: #0f1419;
+  --bg-surface: #1a2332;
+  --bg-elevated: #243044;
+  --bg-hover: #2d3a50;
+  --bg-input: rgba(0, 0, 0, 0.25);
+  --border: #334155;
+  --border-light: #475569;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --accent: #38bdf8;
+  --accent-hover: #7dd3fc;
+  --accent-muted: #0c4a6e;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --neutral: #60a5fa;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --glow: 0 0 20px rgba(56, 189, 248, 0.12);
+  --chart-1: #38bdf8;
+  --chart-2: #34d399;
+  --chart-3: #fbbf24;
+  --chart-4: #f87171;
+  --chart-5: #a78bfa;
+  --chart-6: #22d3ee;
+  --chart-7: #f472b6;
+  --chart-8: #a3e635;
+  --chart-9: #fb923c;
+  --chart-10: #94a3b8;
+  --type-bank: #60a5fa;
+  --type-cash: #34d399;
+  --type-credit-card: #a78bfa;
+  --type-wallet: #22d3ee;
+  --type-loan: #fb923c;
+  --type-investment: #34d399;
+  --type-fd: #38bdf8;
+  --type-rd: #22d3ee;
+  --type-stock: #60a5fa;
+}
+
+/* ── Typography: font family (data-font set by ThemeProvider) ── */
+[data-font="geist"] {
+  --font-sans-active: var(--font-geist-sans);
+}
+
+[data-font="inter"] {
+  --font-sans-active: var(--font-inter);
+}
+
+[data-font="dm-sans"] {
+  --font-sans-active: var(--font-dm-sans);
+}
+
+[data-font="lora"] {
+  --font-sans-active: var(--font-lora);
+}
+
+[data-font="source-serif"] {
+  --font-sans-active: var(--font-source-serif);
+}
+
+[data-font="jetbrains-mono"] {
+  --font-sans-active: var(--font-jetbrains-mono);
+}
+
+/* ── Typography: font size scale ── */
+[data-font-size="small"] {
+  --font-size-scale: 0.875;
+}
+
+[data-font-size="medium"] {
+  --font-size-scale: 1;
+}
+
+[data-font-size="large"] {
+  --font-size-scale: 1.125;
+}
+
+/* ── Density: compact ── */
+[data-density="compact"] {
+  --space-unit: 0.85rem;
+  --card-padding: 14px;
+  --nav-item-height: 38px;
+  --page-padding: 16px;
+  --font-size-base: 14px;
+  --radius: 10px;
+  --radius-sm: 6px;
+}

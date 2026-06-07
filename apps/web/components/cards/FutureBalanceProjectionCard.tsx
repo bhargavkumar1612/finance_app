@@ -29,7 +29,7 @@ export default function FutureBalanceProjectionCard({ payload }: { payload: Reco
                 </div>
                 <div style={{ flex: 1 }}>
                     <div className={styles.label}>Upcoming Bills</div>
-                    <div className={styles.value} style={{ color: '#ef4444' }}>-₹{data.upcoming_bills?.toLocaleString()}</div>
+                    <div className={`${styles.value} amount-liability`}>-₹{data.upcoming_bills?.toLocaleString()}</div>
                 </div>
             </div>
 

@@ -1,27 +1,48 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { IndianRupee, Landmark, List, MessageSquare, Settings } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
+import AppIcon from '@/components/icons/AppIcon';
+import UserMenu from '@/components/UserMenu';
 import styles from './Sidebar.module.css';
 
 const NAV = [
-    { href: '/chat', label: 'Chat', icon: '💬' },
-    { href: '/accounts', label: 'Accounts', icon: '🏦' },
-    { href: '/transactions', label: 'Transactions', icon: '📋' },
-];
+    { href: '/chat', label: 'Chat', icon: MessageSquare },
+    { href: '/accounts', label: 'Accounts', icon: Landmark },
+    { href: '/transactions', label: 'Transactions', icon: List },
+    { href: '/settings', label: 'Settings', icon: Settings },
+] as const;
 
 function userInitial(email: string): string {
     const local = email.split('@')[0] ?? '';
     return (local[0] ?? '?').toUpperCase();
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+    isOpen?: boolean;
+    onNavigate?: () => void;
+}
+
+export default function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
     const pathname = usePathname();
     const { user, logout } = useAuth();
+
+    const handleLogout = () => {
+        onNavigate?.();
+        logout();
+    };
+
     return (
-        <aside className={styles.sidebar}>
+        <aside
+            id="app-nav-drawer"
+            className={`${styles.sidebar} ${isOpen ? styles.open : ''}`}
+            aria-hidden={isOpen ? undefined : true}
+        >
             <div className={styles.logo}>
-                <span className={styles.logoIcon}>₹</span>
+                <span className={styles.logoIcon}>
+                    <AppIcon icon={IndianRupee} size={20} color="white" strokeWidth={2.5} />
+                </span>
                 <span className={styles.logoText}>Finance Copilot</span>
             </div>
             <nav className={styles.nav}>
@@ -30,30 +51,31 @@ export default function Sidebar() {
                         key={href}
                         href={href}
                         className={`${styles.navItem} ${pathname.startsWith(href) ? styles.active : ''}`}
+                        onClick={onNavigate}
                     >
-                        <span className={styles.navIcon}>{icon}</span>
+                        <span className={styles.navIcon}>
+                            <AppIcon icon={icon} size={18} />
+                        </span>
                         <span>{label}</span>
                     </Link>
                 ))}
             </nav>
             <div className={styles.footer}>
                 {user && (
-                    <div className={styles.userBlock}>
-                        <div className={styles.userAvatar} aria-hidden>
-                            {userInitial(user.email)}
-                        </div>
-                        <div className={styles.userMeta}>
-                            <span className={styles.userLabel}>Signed in as</span>
-                            <span className={styles.userEmail} title={user.email}>
-                                {user.email}
-                            </span>
-                        </div>
-                    </div>
+                    <UserMenu
+                        email={user.email}
+                        initial={userInitial(user.email)}
+                        onNavigate={onNavigate}
+                        onLogout={handleLogout}
+                    />
                 )}
-                <button type="button" className={styles.logoutBtn} onClick={logout}>
-                    Log out
-                </button>
-                <a href="http://localhost:8000/docs" target="_blank" rel="noopener noreferrer" className={styles.docsLink}>
+                <a
+                    href="http://localhost:8000/docs"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.docsLink}
+                    onClick={onNavigate}
+                >
                     API Docs ↗
                 </a>
             </div>

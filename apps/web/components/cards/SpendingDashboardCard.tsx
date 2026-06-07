@@ -1,12 +1,11 @@
 'use client';
 
+import { useMemo } from 'react';
+import { BarChart3 } from 'lucide-react';
+import AppIcon from '@/components/icons/AppIcon';
+import { getChartColors } from '@/lib/themes/chartColors';
 import styles from './Card.module.css';
 import dashStyles from './SpendingDashboardCard.module.css';
-
-const CHART_COLORS = [
-    '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-    '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b',
-];
 
 interface MonthPoint {
     month: string;
@@ -50,6 +49,7 @@ function buildConicGradient(
 }
 
 export default function SpendingDashboardCard({ payload }: { payload: Record<string, unknown> }) {
+    const chartColors = useMemo(() => getChartColors(10), [payload]);
     const data = payload as Payload;
     const total = data.total_spend ?? 0;
     const pieData =
@@ -66,14 +66,20 @@ export default function SpendingDashboardCard({ payload }: { payload: Record<str
 
     const pieSlices = pieData.map((row, i) => ({
         ...row,
-        color: CHART_COLORS[i % CHART_COLORS.length],
+        color: chartColors[i % chartColors.length],
     }));
+
+    const headerIcon = (
+        <span className={styles.cardIcon}>
+            <AppIcon icon={BarChart3} size={18} color="var(--accent)" />
+        </span>
+    );
 
     if (total === 0 && pieData.length === 0) {
         return (
             <div className={`${styles.card} fade-up`}>
                 <div className={styles.cardHeader}>
-                    <span className={styles.cardIcon}>📊</span>
+                    {headerIcon}
                     <span className={styles.cardTitle}>Spending dashboard</span>
                 </div>
                 <p className={dashStyles.narrative}>No expenses found for this period. Import a statement or add transactions first.</p>
@@ -84,7 +90,7 @@ export default function SpendingDashboardCard({ payload }: { payload: Record<str
     return (
         <div className={`${styles.card} ${dashStyles.dashboard} fade-up`}>
             <div className={styles.cardHeader}>
-                <span className={styles.cardIcon}>📊</span>
+                {headerIcon}
                 <span className={styles.cardTitle}>Spending dashboard</span>
             </div>
 
@@ -160,7 +166,7 @@ export default function SpendingDashboardCard({ payload }: { payload: Record<str
                             <div key={row.name} className={dashStyles.categoryRow}>
                                 <span
                                     className={dashStyles.dot}
-                                    style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
+                                    style={{ background: chartColors[i % chartColors.length] }}
                                 />
                                 <span className={dashStyles.catName}>{row.name}</span>
                                 <span className={dashStyles.catAmt}>{formatInr(row.value)}</span>

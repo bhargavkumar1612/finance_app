@@ -250,3 +250,38 @@
     margin-top: 12px;
     text-align: left;
 }
+
+@media (max-width: 767px) {
+    .page {
+        padding: 16px;
+    }
+
+    .dropZone {
+        padding: 32px 16px;
+    }
+
+    .reviewStats {
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    .tableCard {
+        overflow-x: auto;
+    }
+
+    .table {
+        min-width: 560px;
+    }
+
+    .reviewActions {
+        flex-direction: column;
+    }
+
+    .reviewActions .btn {
+        width: 100%;
+    }
+
+    .doneCard {
+        padding: 24px 16px;
+    }
+}

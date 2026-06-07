@@ -16,6 +16,7 @@ Guidance for humans and coding agents working in this repository.
 | Skill | Path | Use when |
 |-------|------|----------|
 | Domain interview | [`.cursor/skills/domain-interview/`](.cursor/skills/domain-interview/SKILL.md) | Terminology unclear, before major features, or when the owner asks to "grill me" / capture context |
+| Agent handoff | [`.cursor/skills/handoff/`](.cursor/skills/handoff/SKILL.md) | New session, switching agents, "catch me up", or continuing work without chat history |
 
 Drift tracking: [docs/DRIFT_AUDIT.md](docs/DRIFT_AUDIT.md)
 

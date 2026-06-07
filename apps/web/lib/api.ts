@@ -38,7 +38,26 @@ export interface ChatMessageEntity {
     created_at: string;
 }
 
-export type AccountType = 'bank' | 'credit_card' | 'wallet' | 'cash';
+export type AccountType =
+    | 'bank'
+    | 'credit_card'
+    | 'wallet'
+    | 'cash'
+    | 'loan'
+    | 'mutual_fund'
+    | 'fixed_deposit'
+    | 'recurring_deposit'
+    | 'stock'
+    | 'epf';
+
+export type InvestmentMode = 'one_time' | 'sip';
+
+export type LoanType = 'home' | 'personal' | 'vehicle' | 'education' | 'other';
+
+export interface PaymentHistoryItem {
+    date: string;
+    amount: number;
+}
 
 export interface Account {
     id: string;
@@ -46,10 +65,44 @@ export interface Account {
     account_type: AccountType;
     name: string;
     institution?: string | null;
+    loan_type?: LoanType | null;
+    loan_type_description?: string | null;
     credit_limit?: number | null;
+    sanctioned_amount?: number | null;
+    interest_rate?: number | null;
+    emi_amount?: number | null;
+    tenure_months?: number | null;
+    start_date?: string | null;
+    due_day?: number | null;
     currency?: string;
     parent_account_id?: string | null;
     transaction_count?: number;
+    balance?: number | null;
+    invested_amount?: number | null;
+    current_value?: number | null;
+    pnl_amount?: number | null;
+    pnl_percent?: number | null;
+    credit_used?: number | null;
+    credit_remaining?: number | null;
+    outstanding?: number | null;
+    amount_paid?: number | null;
+    emi_paid_count?: number | null;
+    emi_pending_count?: number | null;
+    payment_history?: PaymentHistoryItem[];
+    opening_balance?: number | null;
+    initial_credit_used?: number | null;
+    initial_credit_used_date?: string | null;
+    initial_emi_paid_count?: number | null;
+    account_number?: string | null;
+    ifsc_code?: string | null;
+    branch?: string | null;
+    account_notes?: string | null;
+    folio_number?: string | null;
+    demat_id?: string | null;
+    investment_mode?: InvestmentMode | null;
+    sip_paid_count?: number | null;
+    sip_pending_count?: number | null;
+    initial_sip_paid_count?: number | null;
     created_at?: string;
 }
 
@@ -57,18 +110,62 @@ export interface CreateAccountRequest {
     account_type: AccountType;
     name: string;
     institution?: string;
+    loan_type?: LoanType;
+    loan_type_description?: string;
     credit_limit?: number;
+    sanctioned_amount?: number;
+    interest_rate?: number;
+    emi_amount?: number;
+    tenure_months?: number;
+    start_date?: string;
+    due_day?: number;
     currency?: string;
     parent_account_id?: string;
+    opening_balance?: number;
+    initial_credit_used?: number;
+    initial_credit_used_date?: string;
+    initial_emi_paid_count?: number;
+    account_number?: string;
+    ifsc_code?: string;
+    branch?: string;
+    account_notes?: string;
+    folio_number?: string;
+    demat_id?: string;
+    invested_amount?: number;
+    current_value?: number;
+    investment_mode?: InvestmentMode;
+    initial_sip_paid_count?: number;
 }
 
 export interface UpdateAccountRequest {
     name?: string;
     institution?: string | null;
     account_type?: AccountType;
+    loan_type?: LoanType | null;
+    loan_type_description?: string | null;
     credit_limit?: number | null;
+    sanctioned_amount?: number | null;
+    interest_rate?: number | null;
+    emi_amount?: number | null;
+    tenure_months?: number | null;
+    start_date?: string | null;
+    due_day?: number | null;
     currency?: string;
     parent_account_id?: string | null;
+    opening_balance?: number | null;
+    initial_credit_used?: number | null;
+    initial_credit_used_date?: string | null;
+    initial_emi_paid_count?: number | null;
+    account_number?: string | null;
+    ifsc_code?: string | null;
+    branch?: string | null;
+    account_notes?: string | null;
+    folio_number?: string | null;
+    demat_id?: string | null;
+    invested_amount?: number | null;
+    current_value?: number | null;
+    investment_mode?: InvestmentMode | null;
+    initial_sip_paid_count?: number | null;
 }
 
 export interface Transaction {

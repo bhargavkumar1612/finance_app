@@ -1,10 +1,22 @@
-/* TransactionConfirmCard specific styles */
-
 .records {
     display: flex;
     flex-direction: column;
     gap: 0;
     margin-bottom: 14px;
+}
+
+.amountHero {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+}
+
+.committedNote {
+    opacity: 0.7;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
 }
 
 .recordRow {
@@ -19,7 +31,6 @@
     margin-top: 4px;
 }
 
-/* Inline editable input that blends into the design */
 .inlineInput {
     background: transparent;
     border: none;
@@ -50,7 +61,6 @@
     font-weight: 400;
 }
 
-/* Suppress native date picker arrows */
 .dateInput::-webkit-calendar-picker-indicator {
     opacity: 0.3;
     cursor: pointer;
@@ -64,6 +74,18 @@
 
 .errorText {
     font-size: 0.82rem;
-    color: var(--danger, #ef4444);
+    color: var(--danger);
     margin: 8px 0;
+}
+
+@media (max-width: 767px) {
+    .inlineInput {
+        width: 100%;
+        max-width: 100%;
+        text-align: left;
+    }
+
+    .amountHero {
+        font-size: 1.75rem;
+    }
 }

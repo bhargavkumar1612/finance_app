@@ -17,6 +17,8 @@ class NwImpact(str, Enum):
 
 PRIMARY_ACCOUNT_TYPES = frozenset({"bank", "cash"})
 DERIVED_ACCOUNT_TYPES = frozenset({"credit_card", "wallet"})
+LOAN_ACCOUNT_TYPES = frozenset({"loan"})
+INVESTMENT_ACCOUNT_TYPES = frozenset({"mutual_fund", "fixed_deposit", "recurring_deposit", "stock", "epf"})
 
 # Category label (lower) -> nw_impact when amount sign alone is ambiguous
 _CATEGORY_NW: dict[str, NwImpact] = {
@@ -91,7 +93,12 @@ def classify_transaction(
         if cat_key in _CATEGORY_NW:
             return _CATEGORY_NW[cat_key]
 
-    if acct == "credit_card":
+    if acct in INVESTMENT_ACCOUNT_TYPES:
+        if amt == 0:
+            return NwImpact.unknown
+        return NwImpact.transfer
+
+    if acct == "credit_card" or acct in LOAN_ACCOUNT_TYPES:
         if amt < 0:
             return NwImpact.spending
         if amt > 0:

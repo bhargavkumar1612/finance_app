@@ -9,7 +9,31 @@ from uuid import UUID
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Transaction, Account, Asset, Liability, RecurringBill
+from app.db.models import Transaction, Account, Asset, RecurringBill
+from app.services.account_balances import compute_account_metrics, liability_outstanding
+from app.services.loan_schedule import compute_loan_schedule
+from app.services.opening_balance import read_opening_balance, upsert_opening_balance
+from app.services.account_types import (
+    ACCOUNT_TYPES,
+    BANK_DETAIL_TYPES,
+    DERIVED_TYPES,
+    INVESTMENT_TYPES,
+    LIMIT_ACCOUNT_TYPES,
+    LOAN_DETAIL_TYPES,
+    LOAN_TYPES,
+    OPENING_BALANCE_TYPES,
+    PARENT_LINKABLE_TYPES,
+    PARENT_REQUIRED_TYPES,
+    PRIMARY_TYPES,
+    SANCTIONED_ACCOUNT_TYPES,
+)
+from app.services.bank_account_details import (
+    apply_bank_fields,
+    clear_bank_fields,
+    normalize_ifsc,
+    normalize_optional_text,
+    validate_bank_details,
+)
 from app.services.net_worth import compute_net_worth
 from app.services.spending import compute_period_spending, spending_filters, income_filters
 from app.services.transaction_semantics import (
@@ -18,9 +42,6 @@ from app.services.transaction_semantics import (
     nw_impact_for_expense,
     nw_impact_for_income,
 )
-
-ACCOUNT_TYPES = ("bank", "credit_card", "wallet", "cash")
-
 
 class LedgerError(Exception):
     def __init__(self, message: str):
@@ -533,18 +554,25 @@ async def _project_future_balance(session: AsyncSession, user_id: UUID, params: 
 
 async def _debt_payoff_planner(session: AsyncSession, user_id: UUID, params: dict) -> dict:
     lr = await session.execute(
-        select(Liability).where(Liability.user_id == user_id)
+        select(Account).where(
+            Account.user_id == user_id,
+            Account.account_type.in_(tuple(LOAN_TYPES)),
+        )
     )
     rows = list(lr.scalars().all())
-    total_debt = sum(float(l.outstanding_amount) for l in rows)
-    total_emi = sum(float(l.emi or 0) for l in rows)
+    total_debt = 0.0
+    total_emi = 0.0
+    for acc in rows:
+        outstanding = await liability_outstanding(session, acc.id, user_id)
+        total_debt += float(outstanding)
+        total_emi += float(acc.emi_amount or 0)
     months = int(total_debt / total_emi) if total_emi > 0 else 0
     return {
         "total_debt": total_debt,
         "strategy": "Avalanche",
         "recommended_monthly_payment": total_emi,
         "months_to_payoff": months,
-        "message": f"Total debt ₹{total_debt:,.0f} across {len(rows)} liability/liabilities.",
+        "message": f"Total debt ₹{total_debt:,.0f} across {len(rows)} loan account(s).",
     }
 
 
@@ -614,17 +642,44 @@ async def _unusual_spending_alert(session: AsyncSession, user_id: UUID, params: 
     }
 
 
-def _account_dict(account: Account, txn_count: int = 0) -> dict:
-    return {
+async def _account_dict(
+    session: AsyncSession,
+    account: Account,
+    user_id: UUID,
+    txn_count: int = 0,
+) -> dict:
+    metrics = await compute_account_metrics(session, account, user_id)
+    result = {
         "id": str(account.id),
         "account_type": account.account_type,
         "name": account.name,
         "institution": account.institution,
+        "loan_type": account.loan_type,
+        "loan_type_description": account.loan_type_description,
         "credit_limit": float(account.credit_limit) if account.credit_limit is not None else None,
+        "sanctioned_amount": float(account.sanctioned_amount) if account.sanctioned_amount is not None else None,
+        "emi_amount": float(account.emi_amount) if account.emi_amount is not None else None,
+        "tenure_months": account.tenure_months,
         "currency": account.currency or "INR",
         "parent_account_id": str(account.parent_account_id) if account.parent_account_id else None,
         "transaction_count": txn_count,
+        "balance": metrics["balance"],
+        "credit_used": metrics["credit_used"],
+        "credit_remaining": metrics["credit_remaining"],
+        "outstanding": metrics["outstanding"],
+        "amount_paid": metrics["amount_paid"],
+        "opening_balance": await read_opening_balance(session, account.id, user_id),
+        "account_number": account.account_number,
+        "ifsc_code": account.ifsc_code,
+        "branch": account.branch,
+        "account_notes": account.account_notes,
     }
+    if account.account_type in LOAN_TYPES:
+        schedule = await compute_loan_schedule(session, account, user_id)
+        result["emi_paid_count"] = schedule["emi_paid_count"]
+        result["emi_pending_count"] = schedule["emi_pending_count"]
+        result["payment_history"] = schedule["payment_history"]
+    return result
 
 
 async def _create_account(session: AsyncSession, user_id: UUID, params: dict) -> dict:
@@ -641,22 +696,31 @@ async def _create_account(session: AsyncSession, user_id: UUID, params: dict) ->
             parent_uuid = UUID(str(parent_id))
         except Exception:
             raise LedgerError("Invalid parent_account_id.")
-    if account_type in ("credit_card", "wallet"):
+    if account_type in PARENT_REQUIRED_TYPES:
         if parent_uuid is None:
-            raise LedgerError("credit_card and wallet accounts require parent_account_id (linked bank/cash).")
+            raise LedgerError("credit_card, loan, and liquid investment accounts require parent_account_id (linked bank/cash).")
         pres = await session.execute(
             select(Account).where(Account.id == parent_uuid, Account.user_id == user_id)
         )
         parent = pres.scalar_one_or_none()
-        if not parent or parent.account_type not in ("bank", "cash"):
+        if not parent or parent.account_type not in PRIMARY_TYPES:
             raise LedgerError("parent_account_id must reference a bank or cash account.")
     elif parent_uuid is not None:
-        raise LedgerError("parent_account_id applies only to credit_card or wallet accounts.")
+        if account_type not in PARENT_LINKABLE_TYPES:
+            raise LedgerError("parent_account_id applies only to derived accounts.")
+        pres = await session.execute(
+            select(Account).where(Account.id == parent_uuid, Account.user_id == user_id)
+        )
+        parent = pres.scalar_one_or_none()
+        if not parent or parent.account_type not in PRIMARY_TYPES:
+            raise LedgerError("parent_account_id must reference a bank or cash account.")
+    elif account_type in PRIMARY_TYPES:
+        pass
     institution = params.get("institution")
     institution = institution.strip() if isinstance(institution, str) and institution.strip() else None
     credit_limit = params.get("credit_limit")
     if credit_limit is not None:
-        if account_type != "credit_card":
+        if account_type not in LIMIT_ACCOUNT_TYPES:
             raise LedgerError("credit_limit applies only to credit_card accounts.")
         try:
             credit_limit = Decimal(str(credit_limit))
@@ -666,21 +730,102 @@ async def _create_account(session: AsyncSession, user_id: UUID, params: dict) ->
             raise LedgerError("Invalid credit_limit.")
     else:
         credit_limit = None
+    sanctioned = params.get("sanctioned_amount")
+    if sanctioned is not None:
+        if account_type not in SANCTIONED_ACCOUNT_TYPES:
+            raise LedgerError("sanctioned_amount applies only to loan accounts.")
+        try:
+            sanctioned = Decimal(str(sanctioned))
+            if sanctioned < 0:
+                raise ValueError
+        except Exception:
+            raise LedgerError("Invalid sanctioned_amount.")
+    else:
+        sanctioned = None
+    opening_balance = params.get("opening_balance")
+    if opening_balance is not None:
+        if account_type not in OPENING_BALANCE_TYPES:
+            raise LedgerError("opening_balance applies only to bank, cash, holdings, and EPF accounts.")
+        try:
+            opening_balance = float(opening_balance)
+            if opening_balance < 0:
+                raise ValueError
+        except Exception:
+            raise LedgerError("Invalid opening_balance.")
+    loan_type = params.get("loan_type")
+    loan_type_description = params.get("loan_type_description")
+    if loan_type is not None:
+        if account_type not in LOAN_TYPES:
+            raise LedgerError("loan_type applies only to loan accounts.")
+        loan_type = str(loan_type).strip().lower()
+        if loan_type not in LOAN_DETAIL_TYPES:
+            raise LedgerError(f"loan_type must be one of: {', '.join(LOAN_DETAIL_TYPES)}")
+    else:
+        loan_type = None
+    if account_type in LOAN_TYPES and loan_type == "other":
+        if not loan_type_description or not str(loan_type_description).strip():
+            raise LedgerError("loan_type_description is required when loan_type is other.")
+    emi_amount = params.get("emi_amount")
+    emi_dec = Decimal(str(emi_amount)) if emi_amount is not None else None
+    interest_rate = params.get("interest_rate")
+    ir_dec = Decimal(str(interest_rate)) if interest_rate is not None else None
+    tenure_months = params.get("tenure_months")
+    due_day = params.get("due_day")
     currency = (params.get("currency") or "INR").strip().upper()
+    account_number = params.get("account_number")
+    ifsc_code = params.get("ifsc_code")
+    branch = params.get("branch")
+    account_notes = params.get("account_notes")
+    try:
+        validate_bank_details(
+            account_type,
+            account_number=account_number,
+            ifsc_code=ifsc_code,
+            branch=branch,
+            account_notes=account_notes,
+        )
+    except ValueError as exc:
+        raise LedgerError(str(exc)) from exc
     account = Account(
         user_id=user_id,
         account_type=account_type,
         name=name,
         institution=institution,
+        loan_type=loan_type,
+        loan_type_description=str(loan_type_description).strip() if loan_type_description else None,
         credit_limit=credit_limit,
+        sanctioned_amount=sanctioned,
+        interest_rate=ir_dec,
+        emi_amount=emi_dec,
+        tenure_months=int(tenure_months) if tenure_months is not None else None,
+        due_day=int(due_day) if due_day is not None else None,
         currency=currency,
         parent_account_id=parent_uuid,
+        account_number=normalize_optional_text(account_number),
+        ifsc_code=normalize_ifsc(ifsc_code),
+        branch=normalize_optional_text(branch),
+        account_notes=normalize_optional_text(account_notes),
     )
+    if account_type not in BANK_DETAIL_TYPES:
+        clear_bank_fields(account)
     session.add(account)
+    await session.flush()
+    if opening_balance is not None and opening_balance > 0:
+        await upsert_opening_balance(session, account, user_id, opening_balance)
     await session.commit()
     await session.refresh(account)
-    acc = _account_dict(account, 0)
-    limit_note = f" (limit ₹{float(credit_limit):,.0f})" if credit_limit else ""
+    txn_count_result = await session.execute(
+        select(func.count(Transaction.id)).where(
+            Transaction.account_id == account.id, Transaction.user_id == user_id
+        )
+    )
+    txn_count = int(txn_count_result.scalar_one() or 0)
+    acc = await _account_dict(session, account, user_id, txn_count)
+    limit_note = ""
+    if credit_limit and account_type == "credit_card":
+        limit_note = f" (limit ₹{float(credit_limit):,.0f})"
+    elif sanctioned and account_type in LOAN_TYPES:
+        limit_note = f" (sanctioned ₹{float(sanctioned):,.0f})"
     return {
         **acc,
         "created_id": acc["id"],
@@ -699,18 +844,27 @@ async def _list_accounts(session: AsyncSession, user_id: UUID) -> dict:
         .group_by(Transaction.account_id)
     )
     counts = {row[0]: int(row[1]) for row in counts_result.all()}
-    items = [_account_dict(a, counts.get(a.id, 0)) for a in accounts]
+    items = [await _account_dict(session, a, user_id, counts.get(a.id, 0)) for a in accounts]
     if not items:
         return {"accounts": [], "message": "You have no accounts yet. Add one from Accounts or ask me to create one."}
     lines = []
     for a in items:
         label = a["account_type"].replace("_", " ")
+        if a.get("loan_type"):
+            label = f"{label} ({a['loan_type']})"
         inst = f" ({a['institution']})" if a.get("institution") else ""
-        limit = ""
-        if a.get("credit_limit") is not None:
-            limit = f", limit ₹{a['credit_limit']:,.0f}"
+        extra = ""
+        if a.get("balance") is not None:
+            extra = f", balance ₹{a['balance']:,.0f}"
+        elif a.get("credit_used") is not None:
+            parts = [f"used ₹{a['credit_used']:,.0f}"]
+            if a.get("credit_remaining") is not None:
+                parts.append(f"remaining ₹{a['credit_remaining']:,.0f}")
+            extra = ", " + " · ".join(parts)
+        elif a.get("outstanding") is not None:
+            extra = f", outstanding ₹{a['outstanding']:,.0f}"
         txns = a.get("transaction_count", 0)
-        lines.append(f"• {a['name']}{inst} — {label}{limit} — {txns} transactions")
+        lines.append(f"• {a['name']}{inst} — {label}{extra} — {txns} transactions")
     return {"accounts": items, "message": "Your accounts:\n" + "\n".join(lines)}
 
 
@@ -744,12 +898,78 @@ async def _update_account(session: AsyncSession, user_id: UUID, params: dict) ->
             account.credit_limit = None
         else:
             account.credit_limit = Decimal(str(cl))
+    if "loan_type" in params:
+        lt = params.get("loan_type")
+        if lt is None:
+            account.loan_type = None
+        else:
+            lt = str(lt).strip().lower()
+            if account.account_type not in LOAN_TYPES:
+                raise LedgerError("loan_type applies only to loan accounts.")
+            if lt not in LOAN_DETAIL_TYPES:
+                raise LedgerError(f"loan_type must be one of: {', '.join(LOAN_DETAIL_TYPES)}")
+            account.loan_type = lt
+    if "sanctioned_amount" in params:
+        sa = params.get("sanctioned_amount")
+        account.sanctioned_amount = None if sa is None else Decimal(str(sa))
+    if "emi_amount" in params:
+        em = params.get("emi_amount")
+        account.emi_amount = None if em is None else Decimal(str(em))
+    if "interest_rate" in params:
+        ir = params.get("interest_rate")
+        account.interest_rate = None if ir is None else Decimal(str(ir))
+    if "tenure_months" in params:
+        account.tenure_months = params.get("tenure_months")
+    if "loan_type_description" in params:
+        desc = params.get("loan_type_description")
+        account.loan_type_description = desc.strip() if isinstance(desc, str) and desc.strip() else None
     if params.get("currency"):
         account.currency = str(params["currency"]).strip().upper()
-    if account.account_type != "credit_card":
+    bank_fields_set = {k for k in ("account_number", "ifsc_code", "branch", "account_notes") if k in params}
+    if bank_fields_set:
+        try:
+            apply_bank_fields(
+                account,
+                account_number=params.get("account_number"),
+                ifsc_code=params.get("ifsc_code"),
+                branch=params.get("branch"),
+                account_notes=params.get("account_notes"),
+                fields_set=bank_fields_set,
+            )
+            validate_bank_details(
+                account.account_type,
+                account_number=account.account_number,
+                ifsc_code=account.ifsc_code,
+                branch=account.branch,
+                account_notes=account.account_notes,
+            )
+        except ValueError as exc:
+            raise LedgerError(str(exc)) from exc
+    if account.account_type not in LIMIT_ACCOUNT_TYPES:
         account.credit_limit = None
-    elif account.credit_limit is not None and account.credit_limit < 0:
+    if account.account_type not in SANCTIONED_ACCOUNT_TYPES:
+        account.sanctioned_amount = None
+        account.interest_rate = None
+        account.emi_amount = None
+        account.tenure_months = None
+        account.loan_type = None
+        account.loan_type_description = None
+    if account.account_type not in BANK_DETAIL_TYPES:
+        clear_bank_fields(account)
+    if account.credit_limit is not None and account.credit_limit < 0:
         raise LedgerError("credit_limit cannot be negative.")
+    if "opening_balance" in params:
+        ob = params.get("opening_balance")
+        if ob is not None:
+            if account.account_type not in OPENING_BALANCE_TYPES:
+                raise LedgerError("opening_balance applies only to bank, cash, holdings, and EPF accounts.")
+            try:
+                ob = float(ob)
+                if ob < 0:
+                    raise ValueError
+            except Exception:
+                raise LedgerError("Invalid opening_balance.")
+        await upsert_opening_balance(session, account, user_id, ob)
     await session.commit()
     await session.refresh(account)
     txn_count = await session.execute(
@@ -757,7 +977,7 @@ async def _update_account(session: AsyncSession, user_id: UUID, params: dict) ->
             Transaction.account_id == account.id, Transaction.user_id == user_id
         )
     )
-    acc = _account_dict(account, int(txn_count.scalar_one() or 0))
+    acc = await _account_dict(session, account, user_id, int(txn_count.scalar_one() or 0))
     return {**acc, "message": f"Updated account “{account.name}”."}
 
 

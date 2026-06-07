@@ -51,6 +51,7 @@ services:
     environment:
       - BACKEND_URL=http://api:8000
       - WATCHPACK_POLLING=true
+      - DEV_LAN_URL=${DEV_LAN_URL:-}
     volumes:
       - ./apps/web:/app
       - /app/node_modules

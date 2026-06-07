@@ -52,7 +52,7 @@ Maps to many scenarios below; run first. Integration tests need Postgres + Redis
 | **SIP / self-transfer** | `nw_impact=transfer`; neutral NW | SIP counted as spending |
 | **Refunds** | `nw_impact=refund` | Refund counted as income spend offset incorrectly |
 | **Confirm before write** | Chat expense/income shows preview → user confirms → row in DB | Chat writes without confirm card |
-| **Derived accounts** | CC/wallet require `parent_account_id` → bank/cash | CC created without parent |
+| **Derived accounts** | CC/loan require `parent_account_id` → bank/cash; online wallet parent optional | CC created without parent |
 | **Import dedupe** | Same fingerprint on **same account** skipped | Cross-account rows wrongly deduped |
 | **Net worth** | Assets − liabilities (hybrid: bank/cash + manual assets − CC outstanding − manual loans) | Empty NW with data present |
 | **credit_limit** | Stored on CC; **not** added to NW | Limit inflates NW |
@@ -149,8 +149,14 @@ Applies to **expense** and **income** mutations only.
 | **REG-F005** | Edit bank name/institution | 200 |
 | **REG-F006** | Delete bank with zero txns | 204 |
 | **REG-F007** | Delete bank with txns | 409; UI delete disabled when count > 0 |
+| **REG-F027** | Create bank with `opening_balance=50000` | 200; `balance=50000`; one txn `source=opening_balance`, `nw_impact=transfer` |
+| **REG-F028** | Create cash with opening balance | Same as F027 |
+| **REG-F029** | `opening_balance` on credit_card / online wallet / loan | 400 |
+| **REG-F030** | Update bank `opening_balance` 50k → 75k | Balance 75k; opening txn updated (not duplicated) |
+| **REG-F031** | Update bank `opening_balance=0` | Opening txn removed; balance 0 if no other txns |
+| **REG-F032** | Net worth after bank + opening balance | `net_worth` includes opening balance |
 
-### Derived accounts (credit_card, wallet)
+### Derived accounts (credit_card, online wallet)
 
 | ID | Steps | Expected |
 |----|-------|----------|
@@ -158,11 +164,17 @@ Applies to **expense** and **income** mutations only.
 | **REG-F011** | Create CC with parent = bank from REG-F001, `credit_limit` 800000 | 200 |
 | **REG-F012** | UI: CC form without linked bank selected | Client error before submit |
 | **REG-F013** | UI: no bank/cash exists yet | Hint: create bank/cash first |
-| **REG-F014** | Create wallet with parent bank | 200 |
+| **REG-F014** | Create online wallet **without** parent, institution PhonePe | 200; `parent_account_id` null |
+| **REG-F014b** | Create online wallet with optional parent bank | 200; see REG-F033–F035 |
 | **REG-F015** | Parent = another CC | 400 |
 | **REG-F016** | `credit_limit` on non-CC type | 400 |
 | **REG-F017** | Negative `credit_limit` | 400 |
 | **REG-F018** | Update CC: change limit, change linked bank | 200; validation enforced |
+| **REG-F019** | Create loan **without** parent | 400: parent required |
+| **REG-F023** | Create loan with parent, `sanctioned_amount`, `emi_amount`, `tenure_months` | 200; metrics fields populated |
+| **REG-F024** | Loan `loan_type=other` without description | 400 |
+| **REG-F025** | Loan disbursement + EMI on loan account | outstanding, amount_paid, emi counts correct |
+| **REG-F026** | POST `/v1/liabilities` | 410 deprecated — use loan accounts |
 
 ### UI (`/accounts`)
 
@@ -171,6 +183,31 @@ Applies to **expense** and **income** mutations only.
 | **REG-F020** | Add → save → appears in table | Name, type, institution visible |
 | **REG-F021** | Edit inline/modal | Updates persist after refresh |
 | **REG-F022** | CC row shows linked bank name | e.g. `linked to HDFC Savings` |
+| **REG-F033** | UI type dropdown | Shows **"Online wallet"** (not "Wallet") |
+| **REG-F034** | Create online wallet with optional parent bank, institution PhonePe | 200; `account_type=wallet`; linked parent shown when set |
+| **REG-F035** | UI: online wallet card | Shows provider; linked bank when set; balance from txns |
+| **REG-F036** | UI: bank form opening balance field | Create with `#acc-opening-balance`; card shows balance |
+| **REG-F040** | Create mutual_fund **without** parent | 400: parent required |
+| **REG-F041** | Create mutual_fund with parent + `opening_balance` | 200; balance from opening txn; `nw_impact=transfer` |
+| **REG-F042** | Create fixed_deposit with start/tenure/rate + opening balance | 200; FD fields stored; balance on card |
+| **REG-F043** | Bank details (IFSC) on mutual_fund | 400 |
+| **REG-F044** | Net worth includes `investment_holdings` | Chat net worth ≥ MF opening balance |
+| **REG-F045** | UI: investment type dropdown | MF, FD, RD, stock visible; parent required hint |
+| **REG-F046** | Create CC with `due_day=15` | 200; card shows Statement due day 15 |
+| **REG-F047** | Loan EMI + tenure without `start_date` | Client/API 400 |
+| **REG-F048** | Loan with EMI + tenure + `start_date` | 200 |
+| **REG-F049** | UI: investment card shows **Invested / Current / P&L** | MF/FD cards; not plain Balance |
+| **REG-F060** | UI: investment P&L when current ≠ invested | Card shows profit % in green |
+| **REG-F050** | UI: FD card shows maturity date | Computed from start + tenure |
+| **REG-F051** | Create MF with `folio_number` | 200; card shows masked folio |
+| **REG-F052** | Create stock with `demat_id` | 200; card shows masked demat |
+| **REG-F053** | UI: accounts hero strip | Net worth, assets, liabilities visible in `#accounts-hero` |
+| **REG-F054** | UI: grouped account layout | Bank under Cash & wallets; CC under Credit cards |
+| **REG-F055** | UI: type optgroups + placement hint | Assets/Liabilities groups; hint updates on type change |
+| **REG-F056** | Create CC with `initial_credit_used` + date | 200; `credit_used` matches; seed txn `source=initial_credit_used`, `nw_impact=spending` |
+| **REG-F057** | Update CC with `opening_balance: null` in body | 200; no 500 (frontend edit regression) |
+| **REG-F058** | Create EPF without parent + `opening_balance` + UAN | 200; balance seeded; no parent required |
+| **REG-F059** | EPF rejects `demat_id`; accepts `folio_number` (UAN) | 400 / 200 |
 
 ---
 
@@ -338,12 +375,47 @@ Types: `home_loan` | `personal_loan` | `cc` | `other`
 
 ## S — Sidebar and navigation (P1)
 
+**Automated:** `e2e/specs/regression/navigation-sidebar.spec.ts` (full desktop + mobile matrix).
+
 | ID | Steps | Expected |
 |----|-------|----------|
-| **REG-S001** | Chat / Accounts / Transactions links | Each page loads |
+| **REG-S001** | Chat / Accounts / Transactions / Settings links | Each page loads |
 | **REG-S002** | `/` | Redirects to `/chat` |
 | **REG-S003** | `/import` | Redirects to `/transactions?import=1` |
 | **REG-S004** | API docs link | Opens localhost:8000/docs |
+| **REG-S005** | Settings nav link | `/settings` loads Appearance + Typography + Density sections |
+| **REG-S006** | Select Midnight theme | `aria-pressed`, `html[data-theme="midnight"]`, persists reload |
+| **REG-S007** | Select Compact density | `aria-pressed`, `html[data-density="compact"]`, persists reload |
+| **REG-S008** | Cycle all theme packs | Each pack sets matching `html[data-theme]` and `localStorage fc_prefs` |
+| **REG-S009** | User menu → Settings | Menu opens; Settings navigates to `/settings` |
+| **REG-S010** | Theme default vs custom font | Default font follows theme; custom font persists across theme changes |
+| **REG-S011** | Text size Large | `html[data-font-size="large"]`, persists reload |
+| **REG-S012** | Settings → Open on phone | LAN URL input; QR + Copy link after valid network URL |
+
+**Storage key:** `fc_prefs` in `localStorage` — `{ themePack, density, fontMode, fontFamily, fontSize }`. Defaults: `paper`, `comfortable`, `default`, `geist`, `medium`.
+
+**Automated:** `e2e/specs/regression/navigation-sidebar.spec.ts` (S001–S006, A007), `e2e/specs/regression/settings-look-and-feel.spec.ts` (S007–S011).
+
+---
+
+## ML — Mobile layout and responsive panes (P1)
+
+Breakpoint: **768px**. Below this width the app nav and chat session list are off-canvas drawers (closed by default). Desktop keeps both panes always visible.
+
+| ID | Steps | Expected |
+|----|-------|----------|
+| **REG-ML001** | Load `/accounts` on mobile viewport | App nav closed; hero visible; no horizontal page overflow |
+| **REG-ML002** | `#app-nav-toggle` + backdrop | Drawer opens and closes |
+| **REG-ML003** | Navigate Chat → Accounts → Transactions via sidebar | Each page loads; drawer auto-closes after each link |
+| **REG-ML004** | `#chat-sessions-toggle` on `/chat` | Sessions drawer opens/closes; New Chat closes drawer |
+| **REG-ML005** | Log out from app nav on mobile | Session cleared; login page |
+| **REG-ML006** | Visit `/` and `/import` | Redirect to `/chat` and `/transactions?import=1` |
+| **REG-ML007** | Settings via mobile nav | `/settings` loads |
+| **REG-ML008** | Compact density on mobile | `data-density="compact"` persists reload |
+
+**Automated:** `e2e/specs/regression/mobile-layout.spec.ts` (`mobile-chrome` project only; ML001–ML008).
+
+**E2E matrix:** All Playwright specs run on `desktop-chromium` and `mobile-chrome` projects. Helpers: `openAppNav`, `navigateViaSidebar`, `openChatSessions` in `e2e/fixtures/helpers.ts`.
 
 ---
 
@@ -441,6 +513,10 @@ For each `ui_type` in `CardRenderer.tsx`, trigger once and confirm **no React er
 
 1. Seed data → REG-D001 → REG-D002 → REG-D004
 
+### Golden path 6 — Investment accounts
+
+1. REG-F001 → REG-F040 (API reject) → REG-F041 → REG-F044 → REG-F042 (UI FD fields)
+
 ---
 
 ## Coverage map: pytest ↔ scenarios
@@ -448,16 +524,31 @@ For each `ui_type` in `CardRenderer.tsx`, trigger once and confirm **no React er
 | Test file | Scenarios partially covered |
 |-----------|----------------------------|
 | `test_health.py` | REG-A008, REG-B001 |
-| `test_accounts_api.py` | REG-F001, F006, F016–F017; **missing** parent_account_id (F010–F015) |
+| `test_accounts_api.py` | REG-F001, F006, F010–F019, F023–F031, F029, F040–F043, F046–F048, F051–F052, loan metrics, opening balance |
 | `test_transactions_api.py` | REG-G001, G006, G008–G010 |
 | `test_chat_api.py` | REG-C001–C002, D001–D002, D008, E001–E004 |
 | `test_import_api.py` | REG-I002, J001, J002, I003 |
 | `test_transaction_semantics.py` | REG-K001–K008 (unit) |
-| `test_net_worth.py` | REG-M001 (partial) |
+| `test_net_worth.py` | REG-M001 (partial), REG-F032, REG-F044 |
 | `test_spend_period.py` | REG-L002 (unit bounds) |
-| `test_llm_client.py` | REG-T001–T003 (unit) |
+| `test_investment_account_details.py` | REG-F051–F052 (unit validation) |
+| `test_account_grouping.py` | REG-F053–F055 (grouping math) |
+| `apps/web/tests/unit/*.test.ts` | Theme prefs parse, account type visuals, chart colors (unit) |
+| `apps/web/tests/integration/*.test.tsx` | ThemeProvider, Settings page, AccountTypeIcon, UserMenu |
+| `e2e/specs/regression/accounts-opening-balance.spec.ts` | REG-F027, REG-F036 (UI) |
+| `e2e/specs/regression/accounts-online-wallet.spec.ts` | REG-F033, REG-F034 |
+| `e2e/specs/regression/accounts-credit-card.spec.ts` | REG-F001, REG-F011, REG-F012, REG-F046 |
+| `e2e/specs/regression/accounts-investments.spec.ts` | REG-F041, REG-F042, REG-F045, REG-F049–F052, REG-F060 (UI) |
+| `e2e/specs/regression/accounts-layout.spec.ts` | REG-F053–F055 (Assets/Liabilities layout) |
+| `e2e/specs/regression/accounts-loan-start.spec.ts` | REG-F047, REG-F048 (UI) |
+| `e2e/specs/regression/mobile-layout.spec.ts` | REG-ML001–REG-ML008 (mobile viewport) |
+| `e2e/specs/regression/navigation-sidebar.spec.ts` | REG-S001–S006, REG-A007 |
+| `e2e/specs/regression/accounts-epf.spec.ts` | REG-F058 (UI) |
+| `e2e/specs/regression/settings-look-and-feel.spec.ts` | REG-S007–S012, REG-ML008 |
+| `apps/web/tests/unit/mobileAccessUrl.test.ts` | LAN URL normalization (unit) |
+| `apps/web/tests/integration/MobileAccessQr.test.tsx` | QR render, copy link, localhost manual URL |
 
-**No automated tests yet:** REG-N*, REG-O*, REG-P*, REG-F010–F015, REG-C003–C009, REG-H*, REG-W*, frontend E2E.
+**No automated tests yet:** REG-N*, REG-O*, REG-P*, REG-F010–F015, REG-C003–C009, REG-H*, REG-W*, some REG-F033–F036 UI-only.
 
 ---
 
@@ -481,7 +572,7 @@ Track fixes in [DRIFT_AUDIT.md](./DRIFT_AUDIT.md).
 
 1. `pytest tests/ -q`
 2. P0 API: REG-A*, F*, G*, I*, J*, K*, C*, M*, X*, Z*
-3. P0 UI: F020–F022, C006, H001, I001, J002, S*
+3. P0 UI: F020–F022, C006, H001, I001, J002, S*, ML*
 4. P1: D*, E*, H*, L*, Q*, T*, U*
 5. P2: N*, O*, P*, R*, W*, Y*
 

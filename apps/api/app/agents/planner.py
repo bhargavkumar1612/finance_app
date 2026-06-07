@@ -172,18 +172,37 @@ TOOLS = [
     "type": "function",
     "function": {
       "name": "create_account",
-      "description": "Creates a bank, credit card, wallet, or cash account. Use for 'add account', 'create HDFC account', 'add credit card'.",
+      "description": "Creates a bank, credit card, online wallet, cash, loan, investment, or EPF account.",
       "parameters": {
         "type": "object",
         "properties": {
           "account_type": {
             "type": "string",
-            "enum": ["bank", "credit_card", "wallet", "cash"],
+            "enum": ["bank", "credit_card", "wallet", "cash", "loan", "mutual_fund", "fixed_deposit", "recurring_deposit", "stock", "epf"],
             "description": "Type of account"
           },
           "name": { "type": "string", "description": "Display name, e.g. HDFC Savings" },
           "institution": { "type": "string", "description": "Bank or provider name (optional)" },
+          "loan_type": {
+            "type": "string",
+            "enum": ["home", "personal", "vehicle", "education", "other"],
+            "description": "Optional loan detail when account_type is loan"
+          },
+          "loan_type_description": {
+            "type": "string",
+            "description": "Required when loan_type is other"
+          },
           "credit_limit": { "type": "number", "description": "Credit limit for credit_card only" },
+          "sanctioned_amount": { "type": "number", "description": "Sanctioned amount for loan accounts" },
+          "emi_amount": { "type": "number", "description": "Monthly EMI for loan accounts" },
+          "tenure_months": { "type": "integer", "description": "Loan tenure in months" },
+          "interest_rate": { "type": "number", "description": "Optional interest rate for loan accounts" },
+          "opening_balance": { "type": "number", "description": "Starting balance for bank/cash/holdings accounts (incl. EPF)" },
+          "account_number": { "type": "string", "description": "Bank account number (bank only)" },
+          "ifsc_code": { "type": "string", "description": "IFSC code (bank only)" },
+          "branch": { "type": "string", "description": "Branch name (bank only)" },
+          "account_notes": { "type": "string", "description": "Other notes for bank account" },
+          "parent_account_id": { "type": "string", "description": "Required for credit_card, loan, liquid investment accounts; optional for online wallet" },
           "currency": { "type": "string", "description": "Currency code, default INR" }
         },
         "required": ["account_type", "name"]
@@ -194,7 +213,7 @@ TOOLS = [
     "type": "function",
     "function": {
       "name": "list_accounts",
-      "description": "Lists all user accounts with types and transaction counts. Use when user asks to see accounts, cards, or wallets.",
+      "description": "Lists all user accounts with types and transaction counts. Use when user asks to see accounts, cards, or online wallets.",
       "parameters": { "type": "object", "properties": {}, "required": [] }
     }
   },
@@ -208,9 +227,21 @@ TOOLS = [
         "properties": {
           "account_id": { "type": "string", "description": "UUID of the account" },
           "name": { "type": "string" },
-          "account_type": { "type": "string", "enum": ["bank", "credit_card", "wallet", "cash"] },
+          "account_type": { "type": "string", "enum": ["bank", "credit_card", "wallet", "cash", "loan", "mutual_fund", "fixed_deposit", "recurring_deposit", "stock"] },
+          "loan_type": { "type": "string", "enum": ["home", "personal", "vehicle", "education", "other"] },
+          "loan_type_description": { "type": "string" },
+          "sanctioned_amount": { "type": "number" },
+          "emi_amount": { "type": "number" },
+          "tenure_months": { "type": "integer" },
+          "interest_rate": { "type": "number" },
+          "parent_account_id": { "type": "string" },
           "institution": { "type": "string" },
           "credit_limit": { "type": "number" },
+          "opening_balance": { "type": "number", "description": "Starting balance for bank/cash/holdings accounts (incl. EPF)" },
+          "account_number": { "type": "string" },
+          "ifsc_code": { "type": "string" },
+          "branch": { "type": "string" },
+          "account_notes": { "type": "string" },
           "currency": { "type": "string" }
         },
         "required": ["account_id"]

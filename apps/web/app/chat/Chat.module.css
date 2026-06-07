@@ -13,6 +13,110 @@
     flex-shrink: 0;
 }
 
+@media (max-width: 767px) {
+    .historySidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 45;
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        box-shadow: var(--shadow);
+    }
+
+    .historySidebarOpen {
+        transform: translateX(0);
+    }
+
+    .chatContainer {
+        height: calc(100dvh - 53px);
+        min-height: 0;
+    }
+
+    .chatPage {
+        max-width: none;
+        width: 100%;
+    }
+
+    .chatHeader {
+        padding: 16px;
+    }
+
+    .chatHeaderRow {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .sessionsToggleBtn {
+        flex-shrink: 0;
+        padding: 8px 12px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        background: var(--bg-elevated);
+        color: var(--text-primary);
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .sessionsToggleBtn:hover {
+        background: var(--bg-hover);
+    }
+
+    .sessionsBackdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 44;
+        background: rgba(0, 0, 0, 0.55);
+        border: none;
+        cursor: pointer;
+    }
+
+    .historyActions {
+        opacity: 1;
+    }
+
+    .inputArea {
+        padding: 12px 16px 16px;
+    }
+
+    .suggestionTray {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .hints {
+        flex-wrap: wrap;
+    }
+}
+
+@media (min-width: 768px) {
+    .historySidebar {
+        position: static;
+        transform: none;
+    }
+}
+
+.sessionsBackdrop {
+    display: none;
+}
+
+@media (max-width: 767px) {
+    .sessionsBackdrop {
+        display: block;
+    }
+}
+
+.chatHeaderRow {
+    display: block;
+}
+
+.chatHeaderText {
+    min-width: 0;
+}
+
 .newChatBtn {
     margin: 16px;
     padding: 10px;
@@ -256,14 +360,12 @@
 .emptyIcon {
     width: 56px;
     height: 56px;
-    background: linear-gradient(135deg, var(--accent), #818cf8);
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
     border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: white;
     box-shadow: var(--glow);
     margin-bottom: 8px;
 }
@@ -325,14 +427,11 @@
     width: 30px;
     height: 30px;
     min-width: 30px;
-    background: linear-gradient(135deg, var(--accent), #818cf8);
+    background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, white));
     border-radius: 9px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: white;
     margin-top: 2px;
 }
 

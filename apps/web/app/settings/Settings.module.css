@@ -1,0 +1,329 @@
+.page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--page-padding);
+}
+
+.header {
+    margin-bottom: 32px;
+}
+
+.title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+}
+
+.subtitle {
+    margin-top: 4px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.section {
+    margin-bottom: 36px;
+}
+
+.sectionTitle {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.sectionDesc {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+
+.themeGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+}
+
+.themeCard {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 14px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-surface);
+    text-align: left;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    cursor: pointer;
+}
+
+.themeCard:hover {
+    border-color: var(--border-light);
+}
+
+.themeCardActive {
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+}
+
+.swatches {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+    margin-bottom: 4px;
+}
+
+.swatch {
+    flex: 1;
+    height: 24px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border-subtle);
+}
+
+.themeLabel {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.themeDesc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.themeMode {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.densityRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+@media (max-width: 480px) {
+    .densityRow {
+        grid-template-columns: 1fr;
+    }
+}
+
+.densityBtn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 16px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-surface);
+    text-align: left;
+    transition: border-color 0.15s;
+    cursor: pointer;
+}
+
+.densityBtn:hover {
+    border-color: var(--border-light);
+}
+
+.densityBtnActive {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg-surface));
+}
+
+.densityLabel {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.densityDesc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.fontModeRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 480px) {
+    .fontModeRow {
+        grid-template-columns: 1fr;
+    }
+}
+
+.fontModeBtn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 14px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-surface);
+    text-align: left;
+    transition: border-color 0.15s;
+    cursor: pointer;
+}
+
+.fontModeBtn:hover {
+    border-color: var(--border-light);
+}
+
+.fontModeBtnActive {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg-surface));
+}
+
+.fontModeLabel {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.fontModeDesc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.fontGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.fontCard {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 14px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-surface);
+    text-align: left;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    cursor: pointer;
+}
+
+.fontCard:hover {
+    border-color: var(--border-light);
+}
+
+.fontCardActive {
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+}
+
+.fontCard[data-font-preview="geist"] .fontSample {
+    font-family: var(--font-geist-sans), sans-serif;
+}
+
+.fontCard[data-font-preview="inter"] .fontSample {
+    font-family: var(--font-inter), sans-serif;
+}
+
+.fontCard[data-font-preview="dm-sans"] .fontSample {
+    font-family: var(--font-dm-sans), sans-serif;
+}
+
+.fontCard[data-font-preview="lora"] .fontSample {
+    font-family: var(--font-lora), serif;
+}
+
+.fontCard[data-font-preview="source-serif"] .fontSample {
+    font-family: var(--font-source-serif), serif;
+}
+
+.fontCard[data-font-preview="jetbrains-mono"] .fontSample {
+    font-family: var(--font-jetbrains-mono), monospace;
+}
+
+.fontSample {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+
+.fontLabel {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.fontDesc {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.subsectionTitle {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.fontSizeRow {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+@media (max-width: 480px) {
+    .fontSizeRow {
+        grid-template-columns: 1fr;
+    }
+}
+
+.fontSizeBtn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 14px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-surface);
+    text-align: left;
+    transition: border-color 0.15s;
+    cursor: pointer;
+}
+
+.fontSizeBtn:hover {
+    border-color: var(--border-light);
+}
+
+.fontSizeBtnActive {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg-surface));
+}
+
+.fontSizeLabel {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.fontSizeDesc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.note {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}

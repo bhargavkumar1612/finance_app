@@ -1,4 +1,4 @@
-"""Hybrid net worth: primary balances + manual assets − CC outstanding − manual liabilities."""
+"""Hybrid net worth: primary balances + manual assets − CC/loan outstanding."""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -7,41 +7,10 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Account, Asset, Liability, Transaction
-from app.services.transaction_semantics import NwImpact
-
-PRIMARY_TYPES = ("bank", "cash")
-
-
-async def _account_balance(session: AsyncSession, account_id: UUID, user_id: UUID) -> Decimal:
-    result = await session.execute(
-        select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.account_id == account_id,
-            Transaction.user_id == user_id,
-        )
-    )
-    return result.scalar_one() or Decimal(0)
-
-
-async def _cc_outstanding(session: AsyncSession, account_id: UUID, user_id: UUID) -> Decimal:
-    spend = await session.execute(
-        select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.account_id == account_id,
-            Transaction.user_id == user_id,
-            Transaction.nw_impact == NwImpact.spending.value,
-        )
-    )
-    payments = await session.execute(
-        select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.account_id == account_id,
-            Transaction.user_id == user_id,
-            Transaction.nw_impact == NwImpact.liability_payment.value,
-        )
-    )
-    spending = abs(spend.scalar_one() or Decimal(0))
-    paid = payments.scalar_one() or Decimal(0)
-    return max(spending - paid, Decimal(0))
-
+from app.db.models import Account, Asset, Transaction
+from app.services.account_balances import account_balance, liability_outstanding
+from app.services.investment_valuation import effective_holdings_value, resolve_current_value
+from app.services.account_types import HOLDINGS_TYPES, LOAN_TYPES, PRIMARY_TYPES
 
 async def compute_net_worth(session: AsyncSession, user_id: UUID) -> dict:
     accounts_result = await session.execute(
@@ -50,11 +19,13 @@ async def compute_net_worth(session: AsyncSession, user_id: UUID) -> dict:
     accounts = list(accounts_result.scalars().all())
 
     cash_assets = Decimal(0)
+    investment_assets = Decimal(0)
     cc_liabilities = Decimal(0)
+    loan_liabilities = Decimal(0)
     breakdown_accounts: list[dict] = []
 
     for acc in accounts:
-        balance = await _account_balance(session, acc.id, user_id)
+        balance = await account_balance(session, acc.id, user_id)
         if acc.account_type in PRIMARY_TYPES:
             cash_assets += balance
             breakdown_accounts.append({
@@ -64,14 +35,18 @@ async def compute_net_worth(session: AsyncSession, user_id: UUID) -> dict:
                 "balance": float(balance),
             })
         elif acc.account_type == "credit_card":
-            outstanding = await _cc_outstanding(session, acc.id, user_id)
+            outstanding = await liability_outstanding(session, acc.id, user_id)
             cc_liabilities += outstanding
-            breakdown_accounts.append({
+            entry: dict = {
                 "name": acc.name,
                 "type": acc.account_type,
                 "role": "derived",
                 "outstanding": float(outstanding),
-            })
+            }
+            if acc.credit_limit is not None:
+                entry["credit_limit"] = float(acc.credit_limit)
+                entry["credit_remaining"] = float(max(acc.credit_limit - outstanding, Decimal(0)))
+            breakdown_accounts.append(entry)
         elif acc.account_type == "wallet":
             cash_assets += balance
             breakdown_accounts.append({
@@ -80,18 +55,42 @@ async def compute_net_worth(session: AsyncSession, user_id: UUID) -> dict:
                 "role": "derived",
                 "balance": float(balance),
             })
+        elif acc.account_type in HOLDINGS_TYPES:
+            balance = float(await account_balance(session, acc.id, user_id))
+            current = await resolve_current_value(session, acc, user_id, balance)
+            holdings_value = effective_holdings_value(current, balance)
+            investment_assets += Decimal(str(holdings_value))
+            inv_entry: dict = {
+                "name": acc.name,
+                "type": acc.account_type,
+                "role": "investment",
+                "balance": balance,
+                "current_value": current,
+            }
+            if acc.institution:
+                inv_entry["institution"] = acc.institution
+            breakdown_accounts.append(inv_entry)
+        elif acc.account_type in LOAN_TYPES:
+            outstanding = await liability_outstanding(session, acc.id, user_id)
+            loan_liabilities += outstanding
+            loan_entry: dict = {
+                "name": acc.name,
+                "type": acc.account_type,
+                "role": "loan",
+                "outstanding": float(outstanding),
+            }
+            if acc.loan_type:
+                loan_entry["loan_type"] = acc.loan_type
+            if acc.sanctioned_amount is not None:
+                loan_entry["sanctioned_amount"] = float(acc.sanctioned_amount)
+            breakdown_accounts.append(loan_entry)
 
     ar = await session.execute(
         select(func.coalesce(func.sum(Asset.current_value), 0)).where(Asset.user_id == user_id)
     )
     manual_assets = ar.scalar_one() or Decimal(0)
 
-    lr = await session.execute(
-        select(func.coalesce(func.sum(Liability.outstanding_amount), 0)).where(Liability.user_id == user_id)
-    )
-    loan_liabilities = lr.scalar_one() or Decimal(0)
-
-    assets_total = cash_assets + manual_assets
+    assets_total = cash_assets + investment_assets + manual_assets
     liabilities_total = cc_liabilities + loan_liabilities
     net_worth = assets_total - liabilities_total
 
@@ -100,6 +99,7 @@ async def compute_net_worth(session: AsyncSession, user_id: UUID) -> dict:
         "assets_total": float(assets_total),
         "liabilities_total": float(liabilities_total),
         "cash_and_primary": float(cash_assets),
+        "investment_holdings": float(investment_assets),
         "manual_assets": float(manual_assets),
         "credit_card_outstanding": float(cc_liabilities),
         "loan_liabilities": float(loan_liabilities),

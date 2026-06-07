@@ -1,6 +1,7 @@
 'use client';
 import { useRef, useEffect, useState } from 'react';
 import { useMachine } from '@xstate/react';
+import { Pencil, Send, Sparkles, Trash2, X } from 'lucide-react';
 import { chatMachine, type ChatMessage } from '@/lib/chatMachine';
 import {
     sendChat,
@@ -11,7 +12,10 @@ import {
     checkApiHealth,
     type ChatSession,
 } from '@/lib/api';
+import { useLayout } from '@/lib/LayoutContext';
+import { useIsMobileLayout } from '@/lib/useIsMobileLayout';
 import CardRenderer from '@/components/cards/CardRenderer';
+import AppIcon from '@/components/icons/AppIcon';
 import styles from './Chat.module.css';
 
 export default function ChatPage() {
@@ -25,8 +29,26 @@ export default function ChatPage() {
     const [deleteTarget, setDeleteTarget] = useState<ChatSession | null>(null);
     const [sessionActionError, setSessionActionError] = useState<string | null>(null);
     const [sessionBusy, setSessionBusy] = useState(false);
+    const [sessionsOpen, setSessionsOpen] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const renameInputRef = useRef<HTMLInputElement>(null);
+    const isMobile = useIsMobileLayout();
+    const { closeAppNav } = useLayout();
+
+    const closeSessions = () => setSessionsOpen(false);
+
+    const openSessions = () => {
+        closeAppNav();
+        setSessionsOpen(true);
+    };
+
+    const toggleSessions = () => {
+        if (sessionsOpen) {
+            closeSessions();
+        } else {
+            openSessions();
+        }
+    };
 
     const loadSessions = async () => {
         setSessionsError(null);
@@ -53,6 +75,7 @@ export default function ChatPage() {
     const handleLoadSession = async (id: string) => {
         setActiveSessionId(id);
         setInput('');
+        if (isMobile) closeSessions();
         try {
             const history = await getChatSessionMessages(id);
             const messages: ChatMessage[] = history.map(h => ({
@@ -71,6 +94,7 @@ export default function ChatPage() {
         setActiveSessionId(null);
         setEditingSessionId(null);
         send({ type: 'RESET' });
+        if (isMobile) closeSessions();
     };
 
     const startRename = (s: ChatSession, e: React.MouseEvent) => {
@@ -131,6 +155,15 @@ export default function ChatPage() {
     };
 
     useEffect(() => {
+        if (!sessionsOpen) return;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') closeSessions();
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [sessionsOpen]);
+
+    useEffect(() => {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }, [state.context.messages]);
 
@@ -169,8 +202,20 @@ export default function ChatPage() {
 
     return (
         <div className={styles.chatContainer}>
-            <div className={styles.historySidebar}>
-                <button onClick={handleNewChat} className={styles.newChatBtn}>+ New Chat</button>
+            {isMobile && sessionsOpen && (
+                <button
+                    type="button"
+                    className={styles.sessionsBackdrop}
+                    aria-label="Close chat sessions"
+                    onClick={closeSessions}
+                />
+            )}
+            <div
+                id="chat-sessions-drawer"
+                className={`${styles.historySidebar} ${isMobile && sessionsOpen ? styles.historySidebarOpen : ''}`}
+                aria-hidden={isMobile && !sessionsOpen ? true : undefined}
+            >
+                <button type="button" onClick={handleNewChat} className={styles.newChatBtn}>+ New Chat</button>
                 {sessionsError && (
                     <div className={styles.sessionsError}>
                         <p>{sessionsError}</p>
@@ -225,7 +270,7 @@ export default function ChatPage() {
                                             disabled={sessionBusy}
                                             onClick={(e) => startRename(s, e)}
                                         >
-                                            ✎
+                                            <AppIcon icon={Pencil} size={14} />
                                         </button>
                                         <button
                                             type="button"
@@ -239,7 +284,7 @@ export default function ChatPage() {
                                                 setSessionActionError(null);
                                             }}
                                         >
-                                            ×
+                                            <AppIcon icon={Trash2} size={14} />
                                         </button>
                                     </div>
                                 </>
@@ -281,14 +326,33 @@ export default function ChatPage() {
 
             <div className={styles.chatPage}>
                 <div className={styles.chatHeader}>
-                    <h1 className={styles.chatTitle}>Finance Copilot</h1>
-                    <p className={styles.chatSubtitle}>Ask me to add expenses, check net worth, or analyse spending</p>
+                    <div className={styles.chatHeaderRow}>
+                        {isMobile && (
+                            <button
+                                id="chat-sessions-toggle"
+                                type="button"
+                                className={styles.sessionsToggleBtn}
+                                aria-label="Open chat sessions"
+                                aria-expanded={sessionsOpen}
+                                aria-controls="chat-sessions-drawer"
+                                onClick={toggleSessions}
+                            >
+                                Sessions
+                            </button>
+                        )}
+                        <div className={styles.chatHeaderText}>
+                            <h1 className={styles.chatTitle}>Finance Copilot</h1>
+                            <p className={styles.chatSubtitle}>Ask me to add expenses, check net worth, or analyse spending</p>
+                        </div>
+                    </div>
                 </div>
 
                 <div className={styles.chatLog} ref={scrollRef}>
                     {state.context.messages.length === 0 ? (
                         <div className={styles.emptyState}>
-                            <div className={styles.emptyIcon}>₹</div>
+                            <div className={styles.emptyIcon}>
+                                <AppIcon icon={Sparkles} size={28} color="var(--accent)" />
+                            </div>
                             <h2>Your AI finance assistant</h2>
                             <p>Try one of these to get started:</p>
                             <div className={styles.hints}>
@@ -306,7 +370,9 @@ export default function ChatPage() {
                                     <div className={styles.userBubble}>{msg.text}</div>
                                 ) : (
                                     <div className={styles.assistantMessage}>
-                                        <div className={styles.assistantAvatar}>₹</div>
+                                        <div className={styles.assistantAvatar}>
+                                            <AppIcon icon={Sparkles} size={16} color="white" />
+                                        </div>
                                         <div className={styles.assistantContent}>
                                             {msg.text && <p className={styles.messageText}>{msg.text}</p>}
                                             {msg.agentResponse && (
@@ -326,7 +392,9 @@ export default function ChatPage() {
                     {isSending && (
                         <div className={`${styles.message} ${styles.assistant}`}>
                             <div className={styles.assistantMessage}>
-                                <div className={styles.assistantAvatar}>₹</div>
+                                <div className={styles.assistantAvatar}>
+                                    <AppIcon icon={Sparkles} size={16} color="white" />
+                                </div>
                                 <div className={styles.typingIndicator}>
                                     <span /><span /><span />
                                 </div>
@@ -370,7 +438,11 @@ export default function ChatPage() {
                             disabled={isSending || !input.trim()}
                             id="chat-send"
                         >
-                            {isSending ? <span className="spinner" style={{ width: 16, height: 16 }} /> : '↑'}
+                            {isSending ? (
+                                <span className="spinner" style={{ width: 16, height: 16 }} />
+                            ) : (
+                                <AppIcon icon={Send} size={16} color="white" />
+                            )}
                         </button>
                     </div>
                     <p className={styles.inputHint}>

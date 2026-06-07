@@ -1,3 +1,5 @@
+import { Gem } from 'lucide-react';
+import AppIcon from '@/components/icons/AppIcon';
 import styles from './Card.module.css';
 
 interface Props {
@@ -15,15 +17,17 @@ export default function NetWorthBreakdownCard({ payload }: Props) {
     return (
         <div className={`${styles.card} ${styles.netWorthCard} fade-up`}>
             <div className={styles.cardHeader}>
-                <span className={styles.cardIcon}>💎</span>
+                <span className={styles.cardIcon}>
+                    <AppIcon icon={Gem} size={18} color="var(--accent)" />
+                </span>
                 <span className={styles.cardTitle}>Net Worth</span>
             </div>
-            <div className={`${styles.netWorthValue} ${isPositive ? styles.positive : styles.negative}`}>
+            <div className={`${styles.netWorthValue} ${isPositive ? 'amount-asset' : 'amount-liability'}`}>
                 {isPositive ? '' : '−'}₹{Math.abs(netWorth).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </div>
             <div className={styles.netWorthBreakdown}>
                 <div className={styles.nwRow}>
-                    <div className={styles.nwDot} style={{ background: '#10b981' }} />
+                    <div className={styles.nwDot} style={{ background: 'var(--success)' }} />
                     <span className={styles.nwLabel}>Total Assets</span>
                     <span className={`${styles.nwAmount} text-success`}>
                         ₹{assets.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -31,7 +35,7 @@ export default function NetWorthBreakdownCard({ payload }: Props) {
                 </div>
                 <div className={styles.nwDivider} />
                 <div className={styles.nwRow}>
-                    <div className={styles.nwDot} style={{ background: '#ef4444' }} />
+                    <div className={styles.nwDot} style={{ background: 'var(--danger)' }} />
                     <span className={styles.nwLabel}>Total Liabilities</span>
                     <span className={`${styles.nwAmount} text-danger`}>
                         ₹{liabilities.toLocaleString('en-IN', { minimumFractionDigits: 2 })}

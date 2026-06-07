@@ -1,4 +1,6 @@
 'use client';
+import { CheckCircle2, HelpCircle } from 'lucide-react';
+import AppIcon from '@/components/icons/AppIcon';
 import styles from './Card.module.css';
 import cardStyles from './TransactionConfirmCard.module.css';
 
@@ -6,6 +8,12 @@ interface Props {
     payload: Record<string, unknown>;
     onAccept?: () => void;
     onReject?: () => void;
+}
+
+function nwImpactClass(impact: unknown): string {
+    const val = String(impact ?? '');
+    if (val === 'spending' || val === 'income') return val === 'income' ? 'amount-asset' : 'amount-liability';
+    return 'amount-neutral';
 }
 
 export default function TransactionConfirmCard({ payload, onAccept, onReject }: Props) {
@@ -26,17 +34,23 @@ export default function TransactionConfirmCard({ payload, onAccept, onReject }: 
     return (
         <div className={`${styles.card} ${styles.confirmCard} fade-up`}>
             <div className={styles.cardHeader}>
-                <span className={styles.cardIcon}>{committed ? '✓' : '?'}</span>
+                <span className={styles.cardIcon}>
+                    <AppIcon
+                        icon={committed ? CheckCircle2 : HelpCircle}
+                        size={18}
+                        color={committed ? 'var(--success)' : 'var(--warning)'}
+                    />
+                </span>
                 <span className={styles.cardTitle}>{title}</span>
             </div>
 
             {summary && <p className={cardStyles.summaryText}>{summary}</p>}
 
+            <div className={cardStyles.amountHero}>
+                ₹{amount.toLocaleString('en-IN')}
+            </div>
+
             <div className={cardStyles.records}>
-                <div className={styles.confirmRow}>
-                    <span className={styles.confirmLabel}>Amount (₹)</span>
-                    <span>{amount.toLocaleString()}</span>
-                </div>
                 {merchant && (
                     <div className={styles.confirmRow}>
                         <span className={styles.confirmLabel}>Merchant</span>
@@ -58,7 +72,9 @@ export default function TransactionConfirmCard({ payload, onAccept, onReject }: 
                 {payload.nw_impact != null && (
                     <div className={styles.confirmRow}>
                         <span className={styles.confirmLabel}>Type</span>
-                        <span>{String(payload.nw_impact)}</span>
+                        <span className={`badge badge-muted ${nwImpactClass(payload.nw_impact)}`}>
+                            {String(payload.nw_impact)}
+                        </span>
                     </div>
                 )}
             </div>
@@ -74,7 +90,7 @@ export default function TransactionConfirmCard({ payload, onAccept, onReject }: 
                         </button>
                     </>
                 ) : committed ? (
-                    <span style={{ opacity: 0.6, fontSize: '0.9rem' }}>Recorded in your ledger</span>
+                    <span className={cardStyles.committedNote}>Recorded in your ledger</span>
                 ) : null}
             </div>
         </div>
